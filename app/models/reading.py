@@ -59,4 +59,8 @@ class ReadingResponse(BaseModel):
         default=False,
         description="True if chilling injury safety interlock forced fan OFF",
     )
+    gas_override_triggered: bool = Field(
+        default=False,
+        description="True if an extreme gas reading forced fan-on and alert-open independent of composite SRI",
+    )
     sensor_status: str = Field(default="ok", description="Sensor status acknowledge")

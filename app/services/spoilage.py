@@ -173,6 +173,12 @@ class SpoilageService:
 
         return assignment, profile, calibration
 
+    def compute_gas_term(self, gas_raw: float, calibration: DeviceCalibration) -> float:
+        """Compute normalized gas term (0.0-1.0) independent of composite SRI weighting."""
+        baseline = calibration.mq135_baseline
+        gas_signal = (gas_raw / baseline) if baseline > 0 else 1.0
+        return normalize_gas_signal(gas_signal)
+
     def compute_sri(
         self,
         temp_c: float,
@@ -191,7 +197,7 @@ class SpoilageService:
         rh_band     = profile.optimal_rh_max - profile.optimal_rh_min
         rh_term     = rh_dev / rh_band                              # 0 when within band
 
-        gas_term    = normalize(gas_signal)                          # commodity-agnostic baseline
+        gas_term    = compute_gas_term(gas_raw, calibration)         # commodity-agnostic baseline
 
         SRI = clamp(w1 * normalize(temp_term) + w2 * rh_term + w3 * gas_term, 0, 1)
         """
@@ -223,9 +229,7 @@ class SpoilageService:
         rh_term = clamp(rh_dev / rh_band, 0.0, 1.0)
 
         # 3. Gas term (PRD §5.1 step 4 & §5.2)
-        baseline = calibration.mq135_baseline
-        gas_signal = (gas_raw / baseline) if baseline > 0 else 1.0
-        gas_term = normalize_gas_signal(gas_signal)
+        gas_term = self.compute_gas_term(gas_raw, calibration)
 
         # 4. SRI Composite
         norm_temp = normalize_temp_term(temp_term)
@@ -253,13 +257,14 @@ class SpoilageService:
         self,
         temp_c: float,
         sri: float,
+        gas_term: float,
         profile: CommodityProfile,
         previous_fan_state: str = "off",
-    ) -> Tuple[str, bool]:
-        """PRD §5.3: Evaluate fan command with Chilling Injury Safety Interlock.
+    ) -> Tuple[str, bool, bool]:
+        """PRD §5.3: Evaluate fan command with Chilling Injury Safety Interlock and Gas Override.
 
         Returns:
-            (fan_command, interlock_triggered)
+            (fan_command, interlock_triggered, gas_override_triggered)
         """
         # Safety interlock check (PRD §3.7.4, §5.3)
         # If temp_c <= profile.chilling_threshold_c (or optimal_temp_min if no explicit threshold):
@@ -272,7 +277,11 @@ class SpoilageService:
 
         if chilling_limit is not None and temp_c <= chilling_limit:
             # SAFETY INTERLOCK TRIGGERED: Venting ambient air would risk chilling injury
-            return "off", True
+            return "off", True, False
+
+        # Gas override safety trigger (PRD §5.3)
+        if gas_term >= settings.gas_override_threshold:
+            return "on", False, True
 
         # Hysteresis fan control (PRD §5.3)
         if previous_fan_state == "on":
@@ -280,7 +289,7 @@ class SpoilageService:
         else:
             command = "on" if sri >= settings.sri_on else "off"
 
-        return command, False
+        return command, False, False
 
     async def update_alerts(
         self,
@@ -288,10 +297,11 @@ class SpoilageService:
         sri: float,
         reading_id: str,
         timestamp: datetime,
+        force_open: bool = False,
     ) -> Optional[Alert]:
         """PRD §5.4: Alert lifecycle management.
 
-        - If SRI >= alert_threshold and no alert open: open one with opened_by_reading_id.
+        - If SRI >= alert_threshold or force_open (gas override): open one with opened_by_reading_id.
         - While open: update peak_risk_value on higher SRI.
         - If SRI < alert_resolve_threshold and alert open: resolve it.
         """
@@ -300,7 +310,7 @@ class SpoilageService:
             sort=[("opened_at", -1)],
         )
 
-        if sri >= settings.alert_threshold:
+        if sri >= settings.alert_threshold or force_open:
             if not open_alert_doc:
                 # Open a new alert episode (PRD §3.6, §5.4)
                 new_alert_id = f"alt-{uuid4().hex[:8]}"
@@ -376,7 +386,7 @@ class SpoilageService:
         # Step 1: Resolve context
         assignment, profile, calibration = await self.resolve_context(device_id, device_ts)
 
-        # Step 2: Compute SRI
+        # Step 2: Compute SRI and gas term
         sri = self.compute_sri(
             temp_c=payload.temp_c,
             humidity_pct=payload.humidity_pct,
@@ -384,12 +394,14 @@ class SpoilageService:
             profile=profile,
             calibration=calibration,
         )
+        gas_term = self.compute_gas_term(payload.gas_raw, calibration)
 
-        # Step 3: Fetch previous fan state & evaluate fan actuation + interlock
+        # Step 3: Fetch previous fan state & evaluate fan actuation + interlock + gas override
         prev_fan = await self.get_previous_fan_state(device_id, device_ts)
-        fan_cmd, interlock_triggered = self.evaluate_fan_command(
+        fan_cmd, interlock_triggered, gas_override_triggered = self.evaluate_fan_command(
             temp_c=payload.temp_c,
             sri=sri,
+            gas_term=gas_term,
             profile=profile,
             previous_fan_state=prev_fan,
         )
@@ -416,7 +428,13 @@ class SpoilageService:
             if reading_dict.get("_id") is None:
                 reading_dict.pop("_id", None)
             await self.db["readings"].insert_one(reading_dict)
-            await self.update_alerts(device_id, sri, reading_id, device_ts)
+            await self.update_alerts(
+                device_id,
+                sri,
+                reading_id,
+                device_ts,
+                force_open=gas_override_triggered,
+            )
         except Exception as err:
             logger.error("Database write error during reading processing: %s", err, exc_info=True)
 
@@ -426,5 +444,6 @@ class SpoilageService:
             fan_command=fan_cmd,
             spoilage_index=sri,
             interlock_triggered=interlock_triggered,
+            gas_override_triggered=gas_override_triggered,
             sensor_status=payload.sensor_status or "ok",
         )

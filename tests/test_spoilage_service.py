@@ -59,6 +59,42 @@ def test_normalize_temp_term():
     assert normalize_temp_term(-100.0) == 0.0
 
 
+def test_compute_gas_term():
+    """Unit test for compute_gas_term in isolation."""
+    service = SpoilageService(None)
+    cal = DeviceCalibration(
+        calibration_id="c-test",
+        device_id="d-test",
+        mq135_baseline=100.0,
+        effective_from=datetime.now(timezone.utc),
+    )
+
+    # Clean air baseline (gas_raw == baseline) -> gas_signal = 1.0 -> gas_term = 0.0
+    assert service.compute_gas_term(100.0, cal) == pytest.approx(0.0, abs=1e-6)
+
+    # Sub-baseline (gas_raw < baseline) -> gas_term = 0.0
+    assert service.compute_gas_term(80.0, cal) == pytest.approx(0.0, abs=1e-6)
+
+    # Mid-span: gas_raw = 200.0 (gas_signal = 2.0, excess = 1.0, span = 2.0) -> gas_term = 0.5
+    assert service.compute_gas_term(200.0, cal) == pytest.approx(0.5, abs=1e-6)
+
+    # Full span: gas_raw = 300.0 (gas_signal = 3.0, excess = 2.0) -> gas_term = 1.0
+    assert service.compute_gas_term(300.0, cal) == pytest.approx(1.0, abs=1e-6)
+
+    # Beyond span: gas_raw = 500.0 (gas_signal = 5.0) -> clamped to 1.0
+    assert service.compute_gas_term(500.0, cal) == pytest.approx(1.0, abs=1e-6)
+
+    # Zero/negative baseline fallback
+    cal_zero = DeviceCalibration(
+        calibration_id="c-zero",
+        device_id="d-zero",
+        mq135_baseline=0.0,
+        effective_from=datetime.now(timezone.utc),
+    )
+    assert service.compute_gas_term(200.0, cal_zero) == pytest.approx(0.0, abs=1e-6)
+
+
+
 
 @pytest.mark.asyncio
 async def test_resolution_chain_success(sample_device_setup, seeded_db):
@@ -267,9 +303,10 @@ async def test_chilling_injury_safety_interlock(sample_device_setup, seeded_db):
     assert sri_high >= settings.sri_on  # Would normally turn fan ON
 
     # Test interlock evaluation directly below chilling threshold (12.0 °C)
-    fan_cmd, interlock_triggered = service.evaluate_fan_command(
+    fan_cmd, interlock_triggered, gas_override = service.evaluate_fan_command(
         temp_c=12.0,
         sri=sri_high,
+        gas_term=0.0,
         profile=profile,
         previous_fan_state="off",
     )
@@ -277,11 +314,13 @@ async def test_chilling_injury_safety_interlock(sample_device_setup, seeded_db):
     # MUST be off because temp <= chilling threshold 13.0 °C
     assert fan_cmd == "off"
     assert interlock_triggered is True
+    assert gas_override is False
 
     # Test at exact threshold boundary (13.0 °C)
-    fan_cmd_boundary, interlock_boundary = service.evaluate_fan_command(
+    fan_cmd_boundary, interlock_boundary, _ = service.evaluate_fan_command(
         temp_c=13.0,
         sri=sri_high,
+        gas_term=0.0,
         profile=profile,
         previous_fan_state="off",
     )
@@ -289,9 +328,10 @@ async def test_chilling_injury_safety_interlock(sample_device_setup, seeded_db):
     assert interlock_boundary is True
 
     # When temperature is safe (> 13.0 °C), interlock does NOT trigger
-    fan_cmd_safe, interlock_safe = service.evaluate_fan_command(
+    fan_cmd_safe, interlock_safe, _ = service.evaluate_fan_command(
         temp_c=14.0,
         sri=sri_high,
+        gas_term=0.0,
         profile=profile,
         previous_fan_state="off",
     )
@@ -317,14 +357,111 @@ async def test_potato_chilling_interlock(seeded_db):
     assert profile.chilling_threshold_c == 2.0
 
     # Test below chilling threshold (1.5 °C)
-    fan_cmd, interlock = service.evaluate_fan_command(temp_c=1.5, sri=0.90, profile=profile)
+    fan_cmd, interlock, gas_override = service.evaluate_fan_command(
+        temp_c=1.5,
+        sri=0.90,
+        gas_term=0.0,
+        profile=profile,
+    )
     assert fan_cmd == "off"
     assert interlock is True
+    assert gas_override is False
 
     # Test above chilling threshold (5.0 °C)
-    fan_cmd_ok, interlock_ok = service.evaluate_fan_command(temp_c=5.0, sri=0.90, profile=profile)
+    fan_cmd_ok, interlock_ok, _ = service.evaluate_fan_command(
+        temp_c=5.0,
+        sri=0.90,
+        gas_term=0.0,
+        profile=profile,
+    )
     assert fan_cmd_ok == "on"
     assert interlock_ok is False
+
+
+@pytest.mark.asyncio
+async def test_gas_override_safety_trigger(sample_device_setup, seeded_db):
+    """PRD §5.3: Extreme gas triggers fan ON and alert OPEN independent of composite SRI.
+
+    When gas_term >= gas_override_threshold (0.90), even if temp and RH are within optimal
+    ranges (resulting in a low composite SRI < alert_threshold 0.70 and < sri_on 0.60),
+    the fan must turn ON and an alert must be opened with peak_risk_value equal to the
+    actual composite SRI (audit integrity).
+    """
+    service = SpoilageService(seeded_db)
+    now = datetime.now(timezone.utc)
+    device_id = "shelf-01"
+
+    # Tomato setup: optimal temp 13-21°C, optimal RH 90-95%, baseline 100.0
+    # Reading with normal temp (20.0°C) and normal RH (92.0%), but extreme gas (raw = 300.0 -> gas_signal = 3.0 -> gas_term = 1.0 >= 0.90)
+    # Composite SRI = 0.50 * 0.0 + 0.30 * 0.0 + 0.20 * 1.0 = 0.20 (< alert_threshold 0.70 and < sri_on 0.60)
+    payload = ReadingCreate(
+        device_seq=1,
+        device_timestamp=now,
+        temp_c=20.0,
+        humidity_pct=92.0,
+        gas_raw=300.0,
+    )
+
+    response = await service.process_reading(device_id, payload)
+
+    # 1. Composite SRI is low (0.20)
+    assert response.spoilage_index == pytest.approx(0.20, abs=1e-4)
+    assert response.spoilage_index < settings.alert_threshold
+    assert response.spoilage_index < settings.sri_on
+
+    # 2. Fan command is forced ON by gas override
+    assert response.fan_command == "on"
+    assert response.gas_override_triggered is True
+    assert response.interlock_triggered is False
+
+    # 3. Alert is opened in DB with actual composite SRI recorded as peak_risk_value
+    alert_doc = await seeded_db["alerts"].find_one({"device_id": device_id, "status": "open"})
+    assert alert_doc is not None
+    assert alert_doc["opened_by_reading_id"] == response.reading_id
+    assert alert_doc["peak_risk_value"] == pytest.approx(response.spoilage_index, abs=1e-4)
+
+
+@pytest.mark.asyncio
+async def test_chilling_interlock_prioritized_over_gas_override(sample_device_setup, seeded_db):
+    """PRD §5.3: Chilling Injury Safety Interlock always takes precedence over Gas Override.
+
+    When both conditions are met simultaneously (temp <= chilling threshold AND gas >= gas_override_threshold),
+    chilling safety MUST prevail: fan commanded OFF, interlock_triggered=True, gas_override_triggered=False.
+    """
+    service = SpoilageService(seeded_db)
+    now = datetime.now(timezone.utc)
+    device_id = "shelf-01"
+    _, profile, calibration = await service.resolve_context(device_id, now)
+
+    # Tomato chilling threshold = 13.0°C. Test at 12.0°C with extreme gas (300.0 -> gas_term = 1.0)
+    gas_term = service.compute_gas_term(300.0, calibration)
+    assert gas_term >= settings.gas_override_threshold
+
+    # Direct evaluation of fan command
+    fan_cmd, interlock, gas_override = service.evaluate_fan_command(
+        temp_c=12.0,
+        sri=0.20,
+        gas_term=gas_term,
+        profile=profile,
+        previous_fan_state="off",
+    )
+
+    assert fan_cmd == "off"
+    assert interlock is True
+    assert gas_override is False
+
+    # Full process_reading ingress pipeline test
+    payload = ReadingCreate(
+        device_seq=1,
+        device_timestamp=now,
+        temp_c=12.0,
+        humidity_pct=92.0,
+        gas_raw=300.0,
+    )
+    response = await service.process_reading(device_id, payload)
+    assert response.fan_command == "off"
+    assert response.interlock_triggered is True
+    assert response.gas_override_triggered is False
 
 
 @pytest.mark.asyncio
@@ -335,19 +472,27 @@ async def test_hysteresis_fan_control(sample_device_setup, seeded_db):
     _, profile, _ = await service.resolve_context("shelf-01", now)
 
     # From OFF: SRI = 0.50 (< sri_on) -> stays OFF
-    cmd, _ = service.evaluate_fan_command(temp_c=20.0, sri=0.50, profile=profile, previous_fan_state="off")
+    cmd, _, _ = service.evaluate_fan_command(
+        temp_c=20.0, sri=0.50, gas_term=0.0, profile=profile, previous_fan_state="off"
+    )
     assert cmd == "off"
 
     # From OFF: SRI = 0.65 (>= sri_on) -> turns ON
-    cmd, _ = service.evaluate_fan_command(temp_c=20.0, sri=0.65, profile=profile, previous_fan_state="off")
+    cmd, _, _ = service.evaluate_fan_command(
+        temp_c=20.0, sri=0.65, gas_term=0.0, profile=profile, previous_fan_state="off"
+    )
     assert cmd == "on"
 
     # From ON: SRI = 0.50 (>= sri_off) -> stays ON (hysteresis band)
-    cmd, _ = service.evaluate_fan_command(temp_c=20.0, sri=0.50, profile=profile, previous_fan_state="on")
+    cmd, _, _ = service.evaluate_fan_command(
+        temp_c=20.0, sri=0.50, gas_term=0.0, profile=profile, previous_fan_state="on"
+    )
     assert cmd == "on"
 
     # From ON: SRI = 0.35 (< sri_off) -> turns OFF
-    cmd, _ = service.evaluate_fan_command(temp_c=20.0, sri=0.35, profile=profile, previous_fan_state="on")
+    cmd, _, _ = service.evaluate_fan_command(
+        temp_c=20.0, sri=0.35, gas_term=0.0, profile=profile, previous_fan_state="on"
+    )
     assert cmd == "off"
 
 
