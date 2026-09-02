@@ -48,22 +48,22 @@ All values are derived directly from **USDA Agriculture Handbook 66 (AH-66)** (*
 
 ### 3.1 SRI Formula (PRD §5.2)
 
-$$\text{temp\_excess} = \max(0, T - T_{\text{opt\_max}})$$
-$$\text{temp\_term} = Q_{10}^{\frac{\text{temp\_excess}}{10}} - 1$$
+$$\text{tempExcess} = \max(0, T - T_{\text{opt max}})$$
+$$\text{tempTerm} = Q_{10}^{\frac{\text{tempExcess}}{10}} - 1$$
 
-$$\text{rh\_dev} = \max(0, \text{RH}_{\text{opt\_min}} - \text{RH}, \text{RH} - \text{RH}_{\text{opt\_max}})$$
-$$\text{rh\_term} = \frac{\text{rh\_dev}}{\text{RH}_{\text{opt\_max}} - \text{RH}_{\text{opt\_min}}}$$
+$$\text{rhDev} = \max(0, \text{RH}_{\text{opt min}} - \text{RH}, \text{RH} - \text{RH}_{\text{opt max}})$$
+$$\text{rhTerm} = \frac{\text{rhDev}}{\text{RH}_{\text{opt max}} - \text{RH}_{\text{opt min}}}$$
 
-$$\text{gas\_term} = \text{normalize}\left(\frac{\text{gas\_raw}}{\text{baseline}}\right)$$
+$$\text{gasTerm} = \text{normalize}\left(\frac{\text{gasRaw}}{\text{baseline}}\right)$$
 
-$$\text{SRI} = \text{clamp}\left(w_1 \cdot \text{normalize}(\text{temp\_term}) + w_2 \cdot \text{rh\_term} + w_3 \cdot \text{gas\_term}, 0, 1\right)$$
+$$\text{SRI} = \text{clamp}\left(w_1 \cdot \text{normalize}(\text{tempTerm}) + w_2 \cdot \text{rhTerm} + w_3 \cdot \text{gasTerm}, 0, 1\right)$$
 
 ### 3.2 Chilling Injury Safety Interlock (PRD §5.3)
 
 Because an exhaust fan draws in ambient air without active cooling, venting during cold ambient conditions (e.g. night air or air-conditioned rooms) could drop the shelf temperature below the commodity's chilling sensitivity limit, causing irreversible chilling injury (e.g. pitting and uneven ripening in tomatoes below $13^\circ\text{C}$).
 
-$$\text{if } T \le T_{\text{chilling\_threshold}}: \quad \text{fan\_command} = \text{"off"} \quad (\text{unconditional interlock})$$
-$$\text{else}: \quad \text{fan\_command} = \text{hysteresis}(\text{SRI}, \text{sri\_on}, \text{sri\_off}, \text{previous\_state})$$
+$$\text{if } T \le T_{\text{chilling threshold}}: \quad \text{fanCommand} = \text{"off"} \quad (\text{unconditional interlock})$$
+$$\text{else}: \quad \text{fanCommand} = \text{hysteresis}(\text{SRI}, \text{sriOn}, \text{sriOff}, \text{previousState})$$
 
 ---
 
