@@ -52,16 +52,19 @@ def clamp(value: float, min_val: float = 0.0, max_val: float = 1.0) -> float:
     return max(min_val, min(max_val, value))
 
 
-def normalize_temp_term(temp_term: float, scale: Optional[float] = None) -> float:
-    """Normalize temperature term to [0.0, 1.0].
+def normalize_temp_term(temp_term: float) -> float:
+    """Saturating normalization of the temperature term to [0.0, 1.0).
 
-    temp_term = q10^(excess/10) - 1.
-    scale: scaling factor (default from config: temp_term_scale, e.g. 2.0).
+    Uses x / (1 + x) instead of a fixed linear divisor. This has no free
+    constant to justify: it maps temp_term=0 -> 0, grows monotonically,
+    and approaches (but never reaches) 1.0 as temp_term grows without bound.
+    Steeper Q10 curves saturate faster than gentler ones because the
+    underlying biology is genuinely more temperature-sensitive, not
+    because of a tuned scale factor.
     """
-    s = scale or settings.temp_term_scale
-    if s <= 0:
-        s = 1.0
-    return clamp(temp_term / s, 0.0, 1.0)
+    if temp_term <= 0:
+        return 0.0
+    return clamp(temp_term / (1.0 + temp_term), 0.0, 1.0)
 
 
 def normalize_gas_signal(gas_signal: float, span: Optional[float] = None) -> float:
@@ -217,7 +220,7 @@ class SpoilageService:
             profile.optimal_rh_min - humidity_pct,
             humidity_pct - profile.optimal_rh_max,
         )
-        rh_term = rh_dev / rh_band
+        rh_term = clamp(rh_dev / rh_band, 0.0, 1.0)
 
         # 3. Gas term (PRD §5.1 step 4 & §5.2)
         baseline = calibration.mq135_baseline

@@ -78,15 +78,28 @@ def parse_commodity(
     # 2. Relative Humidity bands (%)
     opt_rh_min: Optional[float] = None
     opt_rh_max: Optional[float] = None
+    resolved_rh_key: Optional[str] = None
+
     if "optimal_rh_pct" in raw and isinstance(raw["optimal_rh_pct"], list):
+        resolved_rh_key = "optimal_rh_pct"
         opt_rh_min = float(raw["optimal_rh_pct"][0])
         opt_rh_max = float(raw["optimal_rh_pct"][1])
     elif "ripening_rh_pct" in raw and isinstance(raw["ripening_rh_pct"], list):
+        resolved_rh_key = "ripening_rh_pct"
         opt_rh_min = float(raw["ripening_rh_pct"][0])
         opt_rh_max = float(raw["ripening_rh_pct"][1])
     elif "curing_rh_pct" in raw and isinstance(raw["curing_rh_pct"], list):
+        resolved_rh_key = "curing_rh_pct"
         opt_rh_min = float(raw["curing_rh_pct"][0])
         opt_rh_max = float(raw["curing_rh_pct"][1])
+
+    if resolved_rh_key and resolved_rh_key != "optimal_rh_pct":
+        logger.warning(
+            "Commodity '%s': no optimal_rh_pct found; using '%s' as RH proxy. "
+            "Check the profile's *_note field for the documented caveat.",
+            commodity_type,
+            resolved_rh_key,
+        )
 
     # 3. Chilling injury thresholds
     chilling_threshold_c = (

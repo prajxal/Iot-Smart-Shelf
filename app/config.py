@@ -34,9 +34,6 @@ class Settings(BaseSettings):
     w2: float = 0.30  # TODO(confirm): SRI relative humidity deviation weight
     w3: float = 0.20  # TODO(confirm): SRI gas signal weight
 
-    # Scaling denominator for normalizing temp_term (temp_term = q10^(excess/10) - 1)
-    temp_term_scale: float = 2.0  # TODO(confirm): Temp term normalization scaling factor
-
     # Gas normalization parameters (PRD §5.2 / §7 Open Question 2)
     # gas_signal = gas_raw / mq135_baseline
     gas_signal_baseline: float = 1.0  # Normalized baseline ratio (1.0 = baseline)
