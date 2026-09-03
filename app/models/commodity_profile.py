@@ -7,7 +7,7 @@ All numeric values are loaded directly from USDA Handbook 66 reference data.
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
-from app.models.common import PyObjectId
+from app.models.common import PyObjectId, UtcDatetime
 
 
 class CommodityProfile(BaseModel):
@@ -19,7 +19,7 @@ class CommodityProfile(BaseModel):
 
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     commodity_type: str = Field(..., description="Unique identifier of commodity (e.g., tomato, onion)")
-    effective_from: datetime = Field(..., description="Timestamp from which this profile version is effective")
+    effective_from: UtcDatetime = Field(..., description="Timestamp from which this profile version is effective (always UTC)")
 
     # Temperature bands (°C)
     optimal_temp_min: Optional[float] = Field(default=None, description="Minimum optimal storage temperature in Celsius")

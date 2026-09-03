@@ -6,14 +6,14 @@ Source of truth: PRD §3.5, §4, and §5.5.
 from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
-from app.models.common import PyObjectId
+from app.models.common import OptionalUtcDatetime, PyObjectId, UtcDatetime
 
 
 class ReadingCreate(BaseModel):
     """Sensor payload sent by ESP32 via HTTP POST."""
 
     device_seq: int = Field(..., description="Monotonically increasing sequence number from ESP32")
-    device_timestamp: Optional[datetime] = Field(
+    device_timestamp: OptionalUtcDatetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp on device at the time of sampling",
     )
@@ -33,8 +33,8 @@ class Reading(BaseModel):
     reading_id: str = Field(..., description="Unique reading identifier (e.g., 'rd-000001')")
     device_id: str = Field(..., description="Device identifier (e.g., 'shelf-01')")
     device_seq: int = Field(..., description="Sequence number from device")
-    device_timestamp: datetime = Field(..., description="Timestamp on device")
-    server_received_at: datetime = Field(..., description="Timestamp when received by backend")
+    device_timestamp: UtcDatetime = Field(..., description="Timestamp on device (always UTC)")
+    server_received_at: UtcDatetime = Field(..., description="Timestamp when received by backend (always UTC)")
     temp_c: float = Field(..., description="Temperature in Celsius")
     humidity_pct: float = Field(..., description="Relative humidity percentage")
     gas_raw: float = Field(..., description="Raw gas sensor reading")

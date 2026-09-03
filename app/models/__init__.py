@@ -6,6 +6,7 @@ from app.models.device_assignment import DeviceAssignment, DeviceAssignmentCreat
 from app.models.device_calibration import DeviceCalibration, DeviceCalibrationCreate
 from app.models.reading import Reading, ReadingCreate, ReadingResponse
 from app.models.alert import Alert
+from app.models.forecast import DeviceForecastResponse, ForecastPoint
 
 __all__ = [
     "CommodityProfile",
@@ -20,4 +21,6 @@ __all__ = [
     "ReadingCreate",
     "ReadingResponse",
     "Alert",
+    "ForecastPoint",
+    "DeviceForecastResponse",
 ]

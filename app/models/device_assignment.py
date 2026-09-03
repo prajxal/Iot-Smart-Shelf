@@ -7,16 +7,16 @@ Maintains history of which commodity was monitored by which shelf over time.
 from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
-from app.models.common import PyObjectId
+from app.models.common import OptionalUtcDatetime, PyObjectId, UtcDatetime
 
 
 class DeviceAssignmentCreate(BaseModel):
     """Payload for assigning a commodity to a shelf device."""
 
     commodity_type: str = Field(..., description="Commodity type to assign (must exist in commodity_profiles)")
-    start_at: Optional[datetime] = Field(
+    start_at: OptionalUtcDatetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        description="Effective start time for this assignment",
+        description="Effective start time for this assignment (always UTC)",
     )
 
 
@@ -27,8 +27,8 @@ class DeviceAssignment(BaseModel):
     assignment_id: str = Field(..., description="Unique assignment identifier (e.g., 'asg-001')")
     device_id: str = Field(..., description="Device identifier (e.g., 'shelf-01')")
     commodity_type: str = Field(..., description="Assigned commodity (e.g., 'tomato')")
-    start_at: datetime = Field(..., description="Start timestamp of this assignment")
-    end_at: Optional[datetime] = Field(
+    start_at: UtcDatetime = Field(..., description="Start timestamp of this assignment (always UTC)")
+    end_at: OptionalUtcDatetime = Field(
         default=None,
         description="End timestamp. NULL indicates this assignment is currently active.",
     )

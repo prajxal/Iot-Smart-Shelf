@@ -75,6 +75,48 @@ async def test_reading_history_endpoint(sample_device_setup, async_client: Async
 
 
 @pytest.mark.asyncio
+async def test_reading_history_utc_timezone_fidelity(sample_device_setup, async_client: AsyncClient):
+    """Regression test: device_timestamp in GET /history must serialize with UTC timezone ('Z' / offset).
+
+    Verifies that the returned JSON timestamp string round-trips to the exact same UTC instant
+    when parsed by ISO-8601 parsers (e.g. JavaScript new Date(...) in the browser),
+    preventing timezone offset misalignment between history and forecast.
+    """
+    device_id = "shelf-01"
+    original_utc = datetime(2026, 9, 3, 5, 50, 0, tzinfo=timezone.utc)
+
+    payload = {
+        "device_seq": 101,
+        "device_timestamp": original_utc.isoformat(),
+        "temp_c": 24.5,
+        "humidity_pct": 89.0,
+        "gas_raw": 120.0,
+    }
+
+    # Ingress reading
+    post_res = await async_client.post(f"/devices/{device_id}/readings", json=payload)
+    assert post_res.status_code == 200
+
+    # Fetch history
+    hist_res = await async_client.get(f"/devices/{device_id}/history?limit=1")
+    assert hist_res.status_code == 200
+    readings = hist_res.json()
+    assert len(readings) == 1
+
+    raw_ts_str = readings[0]["device_timestamp"]
+    raw_rx_str = readings[0]["server_received_at"]
+
+    # Must end with 'Z' or '+00:00' to denote UTC explicitly
+    assert raw_ts_str.endswith("Z") or "+00:00" in raw_ts_str
+    assert raw_rx_str.endswith("Z") or "+00:00" in raw_rx_str
+
+    # Parse using fromisoformat and assert exact instant equality
+    parsed_dt = datetime.fromisoformat(raw_ts_str)
+    assert parsed_dt.tzinfo is not None
+    assert parsed_dt == original_utc
+
+
+@pytest.mark.asyncio
 async def test_commodities_endpoints(seeded_db, async_client: AsyncClient):
     """PRD §4: GET /commodities and GET /commodities/{type}."""
     resp = await async_client.get("/commodities")

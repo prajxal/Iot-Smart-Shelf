@@ -9,10 +9,15 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from pathlib import Path
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
 from app.config import settings
 from app.db import db_manager, init_db_indexes
 from app.routers.commodities import router as commodities_router
 from app.routers.devices import router as devices_router
+from app.routers.forecasting import router as forecasting_router
 from app.routers.health import router as health_router
 from app.routers.readings import router as readings_router
 
@@ -64,6 +69,18 @@ def create_app() -> FastAPI:
     app.include_router(readings_router)
     app.include_router(devices_router)
     app.include_router(commodities_router)
+    app.include_router(forecasting_router)
+
+    # Mount static files directory if it exists
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir), html=True), name="static")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/dashboard", include_in_schema=False)
+    async def dashboard_redirect() -> RedirectResponse:
+        """Redirect root and /dashboard to static dashboard UI."""
+        return RedirectResponse(url="/static/dashboard.html")
 
     return app
 
