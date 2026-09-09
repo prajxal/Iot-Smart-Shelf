@@ -324,7 +324,6 @@ refreshBtn.addEventListener("click", () => {
 
 // Setup 45s Polling
 function startPolling() {
-  if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(fetchDashboardData, 45000);
 }
 
