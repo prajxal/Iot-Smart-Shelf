@@ -324,8 +324,7 @@ class SpoilageService:
                     opened_by_reading_id=reading_id,
                 )
                 alert_dict = alert.model_dump(by_alias=True)
-                if alert_dict.get("_id") is None:
-                    alert_dict.pop("_id", None)
+                alert_dict.pop("_id", None)
                 await self.db["alerts"].insert_one(alert_dict)
                 logger.info("Opened new alert '%s' for device '%s' (SRI: %.3f)", new_alert_id, device_id, sri)
                 return alert
@@ -424,8 +423,7 @@ class SpoilageService:
         # Step 5: Persist reading and update alerts (PRD §6 resilience: do not block actuation on DB error)
         try:
             reading_dict = reading.model_dump(by_alias=True)
-            if reading_dict.get("_id") is None:
-                reading_dict.pop("_id", None)
+            reading_dict.pop("_id", None)
             await self.db["readings"].insert_one(reading_dict)
             await self.update_alerts(
                 device_id,

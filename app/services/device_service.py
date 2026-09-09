@@ -43,8 +43,7 @@ class DeviceService:
             installed_at=payload.installed_at or datetime.now(timezone.utc),
         )
         doc = device.model_dump(by_alias=True)
-        if doc.get("_id") is None:
-            doc.pop("_id", None)
+        doc.pop("_id", None)
         await self.db["devices"].insert_one(doc)
         return device
 
@@ -104,8 +103,7 @@ class DeviceService:
             end_at=None,
         )
         doc = assignment.model_dump(by_alias=True)
-        if doc.get("_id") is None:
-            doc.pop("_id", None)
+        doc.pop("_id", None)
         await self.db["device_assignments"].insert_one(doc)
         logger.info(
             "Assigned commodity '%s' to device '%s' (assignment_id: %s)",
@@ -130,8 +128,7 @@ class DeviceService:
             effective_from=effective_from,
         )
         doc = cal.model_dump(by_alias=True)
-        if doc.get("_id") is None:
-            doc.pop("_id", None)
+        doc.pop("_id", None)
         await self.db["device_calibration"].insert_one(doc)
         return cal
 
