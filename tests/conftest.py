@@ -3,12 +3,11 @@
 Uses mongomock-motor for in-memory async MongoDB testing.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 import httpx
 from mongomock_motor import AsyncMongoMockClient
-import pytest
 import pytest_asyncio
 
 from app.db import db_manager, get_database, init_db_indexes
@@ -38,7 +37,10 @@ async def seeded_db(mock_db):
 @pytest_asyncio.fixture(scope="function")
 async def sample_device_setup(seeded_db):
     """Seed a device 'shelf-01' with an active assignment to 'tomato' and calibration baseline."""
-    now = datetime.now(timezone.utc)
+    # Backdated so the assignment is active for any as_of a test picks. An assignment
+    # starting "now" cannot cover readings timestamped in the past, which made tests
+    # using a fixed as_of pass or fail depending on the wall clock.
+    now = datetime.now(timezone.utc) - timedelta(days=365)
 
     # Register device
     await seeded_db["devices"].insert_one(

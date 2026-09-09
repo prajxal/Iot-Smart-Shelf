@@ -39,7 +39,7 @@ class Reading(BaseModel):
     humidity_pct: float = Field(..., description="Relative humidity percentage")
     gas_raw: float = Field(..., description="Raw gas sensor reading")
     sensor_status: str = Field(default="ok", description="Sensor health status")
-    spoilage_index: Optional[float] = Field(default=None, description="Computed Spoilage Risk Index (0.0 - 1.0)")
+    sri: Optional[float] = Field(default=None, description="Computed Spoilage Risk Index (0.0 - 1.0)")
     fan_commanded: Optional[bool] = Field(default=None, description="True if fan was commanded ON, False if OFF")
 
     model_config = ConfigDict(
@@ -54,7 +54,7 @@ class ReadingResponse(BaseModel):
     reading_id: str = Field(..., description="Reading identifier")
     device_id: str = Field(..., description="Device identifier")
     fan_command: str = Field(..., description="Actuator command: 'on' or 'off'")
-    spoilage_index: float = Field(..., description="Computed Spoilage Risk Index (SRI)")
+    sri: float = Field(..., description="Computed Spoilage Risk Index (SRI)")
     interlock_triggered: bool = Field(
         default=False,
         description="True if chilling injury safety interlock forced fan OFF",

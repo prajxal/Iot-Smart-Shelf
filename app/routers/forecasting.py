@@ -27,7 +27,6 @@ async def get_device_forecast(
     step_minutes: int = Query(5, ge=1, le=30, description="Forecast step size in minutes (default 5)"),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> DeviceForecastResponse:
-    """Fetch SRI trend forecast for shelf device."""
     service = ForecastingService(db)
     return await service.generate_forecast(
         device_id=device_id,

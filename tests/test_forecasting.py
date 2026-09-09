@@ -30,8 +30,8 @@ def test_distinct_readings_overlap_guard_unit():
     # - Reading 2 (11:55) falls into -10m ([11:42.5, 11:57.5]), -5m ([11:47.5, 12:02.5]), 0m ([11:52.5, 12:07.5])
     # Total non-empty buckets = 6! But distinct readings = 2.
     readings = [
-        {"reading_id": "r1", "device_timestamp": now - timedelta(minutes=20), "spoilage_index": 0.30},
-        {"reading_id": "r2", "device_timestamp": now - timedelta(minutes=5), "spoilage_index": 0.50},
+        {"reading_id": "r1", "device_timestamp": now - timedelta(minutes=20), "sri": 0.30},
+        {"reading_id": "r2", "device_timestamp": now - timedelta(minutes=5), "sri": 0.50},
     ]
 
     ma_buckets = compute_time_moving_averages(readings, ref_time=now)
@@ -39,7 +39,7 @@ def test_distinct_readings_overlap_guard_unit():
     assert len(ma_buckets) == 6
 
     # Distinct reading count is only 2
-    distinct_readings = {r["reading_id"] for r in readings if r.get("spoilage_index") is not None}
+    distinct_readings = {r["reading_id"] for r in readings if r.get("sri") is not None}
     assert len(distinct_readings) == 2
 
     # The dual guard in generate_forecast requires distinct_count >= 4
@@ -60,13 +60,13 @@ async def test_distinct_readings_overlap_guard_in_service(sample_device_setup, s
                 "reading_id": "rd-001",
                 "device_id": device_id,
                 "device_timestamp": now - timedelta(minutes=20),
-                "spoilage_index": 0.30,
+                "sri": 0.30,
             },
             {
                 "reading_id": "rd-002",
                 "device_id": device_id,
                 "device_timestamp": now - timedelta(minutes=5),
-                "spoilage_index": 0.50,
+                "sri": 0.50,
             },
         ]
     )
@@ -78,7 +78,7 @@ async def test_distinct_readings_overlap_guard_in_service(sample_device_setup, s
     assert resp.forecast is None
     assert resp.trend_slope_per_min is None
     assert resp.commodity == "tomato"
-    assert resp.fan_threshold == 0.60
+    assert resp.sri_fan_on == 0.60
     assert resp.alert_threshold == 0.70
 
 
@@ -88,9 +88,9 @@ def test_moving_average_time_bucketing():
 
     # Place readings at irregular intervals around center -10m (11:50, window [11:42.5, 11:57.5])
     readings = [
-        {"reading_id": "r1", "device_timestamp": now - timedelta(minutes=14), "spoilage_index": 0.40},  # 11:46 -> in -10m
-        {"reading_id": "r2", "device_timestamp": now - timedelta(minutes=10), "spoilage_index": 0.50},  # 11:50 -> in -10m
-        {"reading_id": "r3", "device_timestamp": now - timedelta(minutes=7), "spoilage_index": 0.60},   # 11:53 -> in -10m
+        {"reading_id": "r1", "device_timestamp": now - timedelta(minutes=14), "sri": 0.40},  # 11:46 -> in -10m
+        {"reading_id": "r2", "device_timestamp": now - timedelta(minutes=10), "sri": 0.50},  # 11:50 -> in -10m
+        {"reading_id": "r3", "device_timestamp": now - timedelta(minutes=7), "sri": 0.60},   # 11:53 -> in -10m
     ]
 
     buckets = compute_time_moving_averages(readings, ref_time=now)
@@ -143,11 +143,11 @@ async def test_extrapolation_and_floor_clamp(sample_device_setup, seeded_db):
     # Timestamps at -25m, -20m, -15m, -10m, -5m
     await seeded_db["readings"].insert_many(
         [
-            {"reading_id": "rd-01", "device_id": device_id, "device_timestamp": now - timedelta(minutes=25), "spoilage_index": 0.20},
-            {"reading_id": "rd-02", "device_id": device_id, "device_timestamp": now - timedelta(minutes=20), "spoilage_index": 0.15},
-            {"reading_id": "rd-03", "device_id": device_id, "device_timestamp": now - timedelta(minutes=15), "spoilage_index": 0.10},
-            {"reading_id": "rd-04", "device_id": device_id, "device_timestamp": now - timedelta(minutes=10), "spoilage_index": 0.05},
-            {"reading_id": "rd-05", "device_id": device_id, "device_timestamp": now - timedelta(minutes=5), "spoilage_index": 0.02},
+            {"reading_id": "rd-01", "device_id": device_id, "device_timestamp": now - timedelta(minutes=25), "sri": 0.20},
+            {"reading_id": "rd-02", "device_id": device_id, "device_timestamp": now - timedelta(minutes=20), "sri": 0.15},
+            {"reading_id": "rd-03", "device_id": device_id, "device_timestamp": now - timedelta(minutes=15), "sri": 0.10},
+            {"reading_id": "rd-04", "device_id": device_id, "device_timestamp": now - timedelta(minutes=10), "sri": 0.05},
+            {"reading_id": "rd-05", "device_id": device_id, "device_timestamp": now - timedelta(minutes=5), "sri": 0.02},
         ]
     )
 
@@ -184,7 +184,7 @@ async def test_forecast_api_endpoint(sample_device_setup, seeded_db, async_clien
                 "temp_c": 24.0,
                 "humidity_pct": 70.0,
                 "gas_raw": 100.0 + (i * 20.0),
-                "spoilage_index": 0.30 + (i * 0.05),
+                "sri": 0.30 + (i * 0.05),
             }
         )
     await seeded_db["readings"].insert_many(readings)
@@ -196,7 +196,7 @@ async def test_forecast_api_endpoint(sample_device_setup, seeded_db, async_clien
 
     assert data["device_id"] == device_id
     assert data["commodity"] == "tomato"
-    assert data["fan_threshold"] == 0.60
+    assert data["sri_fan_on"] == 0.60
     assert data["alert_threshold"] == 0.70
     assert data["insufficient_data"] is False
     assert data["trend_slope_per_min"] > 0.0

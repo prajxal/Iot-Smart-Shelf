@@ -4,7 +4,6 @@ Source of truth for fields: PRD §3.1, §3.7, and commodity-profiles.json.
 All numeric values are loaded directly from USDA Handbook 66 reference data.
 """
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.common import PyObjectId, UtcDatetime
@@ -84,7 +83,7 @@ class CommodityProfile(BaseModel):
         Otherwise falls back to self.q10 or 1.0.
         """
         if self.q10_bands and temp_c is not None:
-            parsed_bands: List[Tuple[float, float, float]] = []
+            parsed_bands = []
             for band_key, band_val in self.q10_bands.items():
                 try:
                     low_s, high_s = band_key.split("_")
@@ -111,7 +110,7 @@ class CommodityProfileSummary(BaseModel):
     """Summarized commodity profile view for listing."""
 
     commodity_type: str
-    effective_from: datetime
+    effective_from: UtcDatetime
     optimal_temp_min: Optional[float] = None
     optimal_temp_max: Optional[float] = None
     optimal_rh_min: Optional[float] = None

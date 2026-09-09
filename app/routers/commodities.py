@@ -1,9 +1,4 @@
-"""Router for querying reference commodity profiles.
-
-Endpoints:
-- GET /commodities: List available commodity profiles (id, current version, key thresholds).
-- GET /commodities/{commodity_type}: Get latest profile for a given commodity.
-"""
+"""Router for querying reference commodity profiles."""
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -24,7 +19,6 @@ router = APIRouter(tags=["commodities"])
 async def list_commodities(
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> List[CommodityProfileSummary]:
-    """List current versions of all commodity profiles."""
     # Find all distinct commodity types
     commodity_types = await db["commodity_profiles"].distinct("commodity_type")
     summaries: List[CommodityProfileSummary] = []
@@ -35,20 +29,7 @@ async def list_commodities(
             sort=[("effective_from", -1)],
         )
         if doc:
-            summaries.append(
-                CommodityProfileSummary(
-                    commodity_type=doc["commodity_type"],
-                    effective_from=doc["effective_from"],
-                    optimal_temp_min=doc.get("optimal_temp_min"),
-                    optimal_temp_max=doc.get("optimal_temp_max"),
-                    optimal_rh_min=doc.get("optimal_rh_min"),
-                    optimal_rh_max=doc.get("optimal_rh_max"),
-                    chilling_threshold_c=doc.get("chilling_threshold_c"),
-                    reference_temp_c=doc.get("reference_temp_c"),
-                    q10=doc.get("q10"),
-                    source=doc.get("source"),
-                )
-            )
+            summaries.append(CommodityProfileSummary(**doc))
 
     return summaries
 

@@ -1,9 +1,4 @@
-"""Router for sensor readings ingress and history queries.
-
-Endpoints:
-- POST /devices/{device_id}/readings: Critical path for ESP32 sensor ingress.
-- GET /devices/{device_id}/history: Time-range historical readings query.
-"""
+"""Router for sensor readings ingress and history queries."""
 
 from datetime import datetime
 from typing import List, Optional
@@ -39,17 +34,10 @@ async def create_device_reading(
     payload: ReadingCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> ReadingResponse:
-    """Process incoming sensor reading from ESP32."""
     service = SpoilageService(db)
     try:
-        response = await service.process_reading(device_id=device_id, payload=payload)
-        return response
-    except NoActiveAssignmentError as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(err),
-        ) from err
-    except ProfileNotFoundError as err:
+        return await service.process_reading(device_id=device_id, payload=payload)
+    except (NoActiveAssignmentError, ProfileNotFoundError) as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(err),
@@ -74,7 +62,6 @@ async def get_device_reading_history(
     limit: int = Query(100, ge=1, le=1000, description="Max readings to return (default 100, max 1000)"),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> List[Reading]:
-    """Query time-range historical readings for device."""
     query: dict = {"device_id": device_id}
     time_filter: dict = {}
     if start_time:

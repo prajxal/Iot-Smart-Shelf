@@ -97,8 +97,8 @@ async def seed_mock_dashboard_data():
                 "humidity_pct": round(humidity_pct, 1),
                 "gas_raw": round(gas_raw, 1),
                 "sensor_status": "ok",
-                "spoilage_index": round(sri, 4),
-                "fan_commanded": sri >= settings.sri_on,
+                "sri": round(sri, 4),
+                "fan_commanded": sri >= settings.sri_fan_on,
             }
         )
 

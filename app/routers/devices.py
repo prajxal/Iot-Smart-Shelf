@@ -1,15 +1,4 @@
-"""Router for shelf devices, assignments, calibrations, alerts, and status.
-
-Endpoints:
-- GET /devices/{device_id}/status: Latest reading + SRI + fan state + active commodity.
-- GET /devices/{device_id}/alerts: Alert history (open + resolved).
-- GET /devices/{device_id}/assignment: Current commodity assignment.
-- PUT /devices/{device_id}/assignment: Reassign commodity (enforces overlap protection).
-- POST /devices: Register a new device.
-- GET /devices: List all devices.
-- POST /devices/{device_id}/calibration: Register device calibration.
-- GET /devices/{device_id}/calibration: Get latest calibration.
-"""
+"""Router for shelf devices, assignments, calibrations, alerts, and status."""
 
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -20,11 +9,7 @@ from app.models.alert import Alert
 from app.models.device import Device, DeviceCreate
 from app.models.device_assignment import DeviceAssignment, DeviceAssignmentCreate
 from app.models.device_calibration import DeviceCalibration, DeviceCalibrationCreate
-from app.services.device_service import (
-    CommodityNotFoundError,
-    DeviceNotFoundError,
-    DeviceService,
-)
+from app.services.device_service import CommodityNotFoundError, DeviceService
 
 router = APIRouter(tags=["devices"])
 
@@ -38,7 +23,6 @@ async def get_device_status(
     device_id: str,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
-    """Fetch real-time device status."""
     service = DeviceService(db)
     return await service.get_device_status(device_id)
 
@@ -55,7 +39,6 @@ async def get_device_alerts(
     limit: int = Query(50, ge=1, le=500, description="Max alerts to return"),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> List[Alert]:
-    """Fetch alerts for device."""
     query: dict = {"device_id": device_id}
     if status_filter:
         query["status"] = status_filter
@@ -75,7 +58,6 @@ async def get_active_assignment(
     device_id: str,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> DeviceAssignment:
-    """Fetch active assignment."""
     service = DeviceService(db)
     assignment = await service.get_active_assignment(device_id)
     if not assignment:
@@ -101,11 +83,9 @@ async def reassign_device_commodity(
     payload: DeviceAssignmentCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> DeviceAssignment:
-    """Reassign commodity for a shelf device."""
     service = DeviceService(db)
     try:
-        assignment = await service.reassign_commodity(device_id, payload)
-        return assignment
+        return await service.reassign_commodity(device_id, payload)
     except CommodityNotFoundError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -153,7 +133,6 @@ async def add_device_calibration(
     payload: DeviceCalibrationCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> DeviceCalibration:
-    """Register calibration record for device."""
     service = DeviceService(db)
     return await service.add_calibration(device_id, payload)
 

@@ -22,7 +22,7 @@ The system continuously samples temperature and relative humidity (DHT22) alongs
    - Computes Q10 temperature-excess rate, RH deviation, and normalized gas terms.
    - Computes composite **Spoilage Risk Index (SRI)**.
    - Checks **Chilling Injury Safety Interlock** (forces fan `OFF` if ambient temperature $\le$ chilling threshold).
-   - Evaluates hysteresis fan state (`sri_on` / `sri_off`).
+   - Evaluates hysteresis fan state (`sri_fan_on` / `sri_fan_off`).
    - Updates alert lifecycle with audit traceability (`opened_by_reading_id`).
    - Persists reading and returns actuation command to the ESP32 in a single sub-second round trip.
 
@@ -73,8 +73,8 @@ $$\text{else}: \quad \text{fanCommand} = \text{hysteresis}(\text{SRI}, \text{sri
 2. `devices`: Physical shelf metadata (`device_id`, `location`, `installed_at`).
 3. `device_assignments`: Commodity assignment history (`device_id`, `commodity_type`, `start_at`, `end_at`). **Invariant:** At most one assignment per device may have `end_at: null` at any time.
 4. `device_calibration`: Versioned sensor baseline calibration records (`device_id`, `mq135_baseline`, `effective_from`).
-5. `readings`: Monitored time-series sensor samples with computed SRI and actuation state (`reading_id`, `device_id`, `device_seq`, `device_timestamp`, `temp_c`, `humidity_pct`, `gas_raw`, `spoilage_index`, `fan_commanded`).
-6. `alerts`: High risk alert episodes with audit link back to the triggering reading (`alert_id`, `device_id`, `opened_by_reading_id`, `peak_risk_value`, `status`, `opened_at`, `resolved_at`).
+5. `readings`: Monitored time-series sensor samples with computed SRI and actuation state (`reading_id`, `device_id`, `device_seq`, `device_timestamp`, `temp_c`, `humidity_pct`, `gas_raw`, `sri`, `fan_commanded`).
+6. `alerts`: High risk alert episodes with audit link back to the triggering reading (`alert_id`, `device_id`, `opened_by_reading_id`, `peak_sri`, `status`, `opened_at`, `resolved_at`).
 
 ---
 
@@ -119,8 +119,8 @@ SMART_SHELF_MONGODB_DB_NAME=smart_shelf
 SMART_SHELF_W1=0.50
 SMART_SHELF_W2=0.30
 SMART_SHELF_W3=0.20
-SMART_SHELF_SRI_ON=0.60
-SMART_SHELF_SRI_OFF=0.40
+SMART_SHELF_SRI_FAN_ON=0.60
+SMART_SHELF_SRI_FAN_OFF=0.40
 SMART_SHELF_ALERT_THRESHOLD=0.70
 SMART_SHELF_ALERT_RESOLVE_THRESHOLD=0.40
 ```
@@ -150,5 +150,5 @@ The following parameters are engineering tuning weights and operational threshol
 
 1. **SRI Term Weights (`w1, w2, w3`):** Default `w1=0.50` (temperature), `w2=0.30` (RH deviation), `w3=0.20` (gas signal). *(# TODO(confirm): Confirm empirical weighting).*
 2. **Gas Normalization Baseline & Span (`gas_signal_baseline`, `gas_signal_span`):** Normalizes $\frac{R_s}{R_o}$ relative to calibrated clean air baseline. *(# TODO(confirm): Finalize MQ-135 voltage span under kirana ambient conditions).*
-3. **Fan Hysteresis (`sri_on=0.60`, `sri_off=0.40`):** Prevents high-frequency relay bouncing.
+3. **Fan Hysteresis (`sri_fan_on=0.60`, `sri_fan_off=0.40`):** Prevents high-frequency relay bouncing.
 4. **Alert Thresholds (`alert_threshold=0.70`, `alert_resolve_threshold=0.40`):** Sets the trigger and resolution bounds for spoilage risk notifications.

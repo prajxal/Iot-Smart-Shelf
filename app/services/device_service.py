@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models.commodity_profile import CommodityProfile
 from app.models.device import Device, DeviceCreate
 from app.models.device_assignment import DeviceAssignment, DeviceAssignmentCreate
 from app.models.device_calibration import DeviceCalibration, DeviceCalibrationCreate
@@ -27,10 +26,6 @@ class CommodityNotFoundError(DeviceServiceError):
     """Raised when assigning an unknown commodity_type."""
 
 
-class DeviceNotFoundError(DeviceServiceError):
-    """Raised when a requested device is not found."""
-
-
 class DeviceService:
     """Service for device lifecycle, assignments, and calibration."""
 
@@ -38,7 +33,6 @@ class DeviceService:
         self.db = db
 
     async def register_device(self, payload: DeviceCreate) -> Device:
-        """Register a new shelf hardware unit."""
         existing = await self.db["devices"].find_one({"device_id": payload.device_id})
         if existing:
             return Device(**existing)
@@ -49,20 +43,11 @@ class DeviceService:
             installed_at=payload.installed_at or datetime.now(timezone.utc),
         )
         doc = device.model_dump(by_alias=True)
-        if doc.get("_id") is None:
-            doc.pop("_id", None)
+        doc.pop("_id", None)
         await self.db["devices"].insert_one(doc)
         return device
 
-    async def get_device(self, device_id: str) -> Optional[Device]:
-        """Fetch device by ID."""
-        doc = await self.db["devices"].find_one({"device_id": device_id})
-        if doc:
-            return Device(**doc)
-        return None
-
     async def list_devices(self) -> List[Device]:
-        """List all registered shelf devices."""
         cursor = self.db["devices"].find()
         docs = await cursor.to_list(length=1000)
         return [Device(**d) for d in docs]
@@ -118,8 +103,7 @@ class DeviceService:
             end_at=None,
         )
         doc = assignment.model_dump(by_alias=True)
-        if doc.get("_id") is None:
-            doc.pop("_id", None)
+        doc.pop("_id", None)
         await self.db["device_assignments"].insert_one(doc)
         logger.info(
             "Assigned commodity '%s' to device '%s' (assignment_id: %s)",
@@ -144,13 +128,11 @@ class DeviceService:
             effective_from=effective_from,
         )
         doc = cal.model_dump(by_alias=True)
-        if doc.get("_id") is None:
-            doc.pop("_id", None)
+        doc.pop("_id", None)
         await self.db["device_calibration"].insert_one(doc)
         return cal
 
     async def get_latest_calibration(self, device_id: str) -> Optional[DeviceCalibration]:
-        """Fetch the most recent calibration for device."""
         doc = await self.db["device_calibration"].find_one(
             {"device_id": device_id},
             sort=[("effective_from", -1)],
@@ -179,7 +161,7 @@ class DeviceService:
                 "device_id": device_id,
                 "active_commodity": active_commodity,
                 "latest_reading": None,
-                "spoilage_index": None,
+                "sri": None,
                 "fan_command": "off",
                 "fan_commanded": False,
             }
@@ -191,7 +173,7 @@ class DeviceService:
             "device_id": device_id,
             "active_commodity": active_commodity,
             "latest_reading": reading,
-            "spoilage_index": reading.spoilage_index,
+            "sri": reading.sri,
             "fan_command": fan_cmd,
             "fan_commanded": reading.fan_commanded,
         }

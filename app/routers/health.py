@@ -1,8 +1,4 @@
-"""Health and liveness router.
-
-Endpoint:
-- GET /health: Liveness and database connectivity probe.
-"""
+"""Health and liveness router."""
 
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -23,7 +19,6 @@ async def health_check(
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
     """Return application health status and database connectivity."""
-    db_status = "unknown"
     try:
         # Ping database
         await db.command("ping")

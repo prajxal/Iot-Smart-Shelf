@@ -13,7 +13,7 @@ none are hardcoded, approximated, or invented in this codebase (PRD §0).
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
 from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -48,7 +48,6 @@ class MissingProfileFieldError(SpoilageServiceError):
 
 
 def clamp(value: float, min_val: float = 0.0, max_val: float = 1.0) -> float:
-    """Clamp a floating point value within [min_val, max_val]."""
     return max(min_val, min(max_val, value))
 
 
@@ -67,15 +66,15 @@ def normalize_temp_term(temp_term: float) -> float:
     return clamp(temp_term / (1.0 + temp_term), 0.0, 1.0)
 
 
-def normalize_gas_signal(gas_signal: float, span: Optional[float] = None) -> float:
+def normalize_gas_signal(gas_signal: float) -> float:
     """Normalize gas signal (Rs/Ro ratio) to [0.0, 1.0].
 
     gas_signal = gas_raw / mq135_baseline.
     1.0 is baseline clean air. Above 1.0 indicates gas accumulation.
     """
-    span_val = span or settings.gas_signal_span
-    if span_val <= 0:
-        span_val = 1.0
+    # Guards a misconfigured SMART_SHELF_GAS_SIGNAL_SPAN=0 from dividing by zero
+    # on the ingress critical path.
+    span_val = settings.gas_signal_span if settings.gas_signal_span > 0 else 1.0
     excess = gas_signal - settings.gas_signal_baseline
     if excess <= 0:
         return 0.0
@@ -285,9 +284,9 @@ class SpoilageService:
 
         # Hysteresis fan control (PRD §5.3)
         if previous_fan_state == "on":
-            command = "off" if sri < settings.sri_off else "on"
+            command = "off" if sri < settings.sri_fan_off else "on"
         else:
-            command = "on" if sri >= settings.sri_on else "off"
+            command = "on" if sri >= settings.sri_fan_on else "off"
 
         return command, False, False
 
@@ -302,7 +301,7 @@ class SpoilageService:
         """PRD §5.4: Alert lifecycle management.
 
         - If SRI >= alert_threshold or force_open (gas override): open one with opened_by_reading_id.
-        - While open: update peak_risk_value on higher SRI.
+        - While open: update peak_sri on higher SRI.
         - If SRI < alert_resolve_threshold and alert open: resolve it.
         """
         open_alert_doc = await self.db["alerts"].find_one(
@@ -321,24 +320,23 @@ class SpoilageService:
                     status="open",
                     opened_at=timestamp,
                     resolved_at=None,
-                    peak_risk_value=sri,
+                    peak_sri=sri,
                     opened_by_reading_id=reading_id,
                 )
                 alert_dict = alert.model_dump(by_alias=True)
-                if alert_dict.get("_id") is None:
-                    alert_dict.pop("_id", None)
+                alert_dict.pop("_id", None)
                 await self.db["alerts"].insert_one(alert_dict)
                 logger.info("Opened new alert '%s' for device '%s' (SRI: %.3f)", new_alert_id, device_id, sri)
                 return alert
             else:
                 # Update peak risk value if current SRI is higher
-                current_peak = open_alert_doc.get("peak_risk_value", 0.0)
+                current_peak = open_alert_doc.get("peak_sri", 0.0)
                 if sri > current_peak:
                     await self.db["alerts"].update_one(
                         {"_id": open_alert_doc["_id"]},
-                        {"$set": {"peak_risk_value": sri}},
+                        {"$set": {"peak_sri": sri}},
                     )
-                    open_alert_doc["peak_risk_value"] = sri
+                    open_alert_doc["peak_sri"] = sri
                 return Alert(**open_alert_doc)
 
         elif sri < settings.alert_resolve_threshold:
@@ -418,15 +416,14 @@ class SpoilageService:
             humidity_pct=payload.humidity_pct,
             gas_raw=payload.gas_raw,
             sensor_status=payload.sensor_status or "ok",
-            spoilage_index=sri,
+            sri=sri,
             fan_commanded=fan_commanded,
         )
 
         # Step 5: Persist reading and update alerts (PRD §6 resilience: do not block actuation on DB error)
         try:
             reading_dict = reading.model_dump(by_alias=True)
-            if reading_dict.get("_id") is None:
-                reading_dict.pop("_id", None)
+            reading_dict.pop("_id", None)
             await self.db["readings"].insert_one(reading_dict)
             await self.update_alerts(
                 device_id,
@@ -442,7 +439,7 @@ class SpoilageService:
             reading_id=reading_id,
             device_id=device_id,
             fan_command=fan_cmd,
-            spoilage_index=sri,
+            sri=sri,
             interlock_triggered=interlock_triggered,
             gas_override_triggered=gas_override_triggered,
             sensor_status=payload.sensor_status or "ok",

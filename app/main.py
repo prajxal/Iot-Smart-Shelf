@@ -47,7 +47,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def create_app() -> FastAPI:
-    """Factory function to configure and instantiate the FastAPI application."""
     app = FastAPI(
         title=settings.api_title,
         version=settings.api_version,
@@ -79,7 +78,6 @@ def create_app() -> FastAPI:
     @app.get("/", include_in_schema=False)
     @app.get("/dashboard", include_in_schema=False)
     async def dashboard_redirect() -> RedirectResponse:
-        """Redirect root and /dashboard to static dashboard UI."""
         return RedirectResponse(url="/static/dashboard.html")
 
     return app

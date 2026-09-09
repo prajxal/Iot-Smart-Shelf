@@ -8,7 +8,6 @@ Validates PRD §0, §3.1, and §3.7:
 import json
 from pathlib import Path
 import pytest
-from app.db import DatabaseManager
 from scripts.seed_commodity_profiles import seed_commodity_profiles
 
 

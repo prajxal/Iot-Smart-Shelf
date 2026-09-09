@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     gas_signal_span: float = 2.0  # TODO(confirm): MQ-135 signal span above baseline for full scale (1.0)
 
     # Hysteresis fan control thresholds (PRD §5.3)
-    sri_on: float = 0.60  # TODO(confirm): SRI threshold to turn fan ON
-    sri_off: float = 0.40  # TODO(confirm): SRI threshold to turn fan OFF
+    sri_fan_on: float = 0.60  # TODO(confirm): SRI threshold to turn fan ON
+    sri_fan_off: float = 0.40  # TODO(confirm): SRI threshold to turn fan OFF
 
     # Gas override safety trigger (PRD §5.3)
     gas_override_threshold: float = 0.90  # TODO(confirm): normalized gas_term threshold for gas-override safety trigger (independent of composite SRI weighting)
