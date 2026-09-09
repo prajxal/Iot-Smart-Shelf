@@ -19,7 +19,6 @@ async def health_check(
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
     """Return application health status and database connectivity."""
-    db_status = "unknown"
     try:
         # Ping database
         await db.command("ping")
