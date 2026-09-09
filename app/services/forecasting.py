@@ -159,7 +159,7 @@ class ForecastingService:
                 current_sri = float(latest_doc["spoilage_index"])
 
         # 3. Check distinct raw readings count
-        distinct_raw_readings = {
+        distinct_reading_ids = {
             r.get("reading_id") or str(r.get("device_timestamp"))
             for r in recent_readings
             if r.get("spoilage_index") is not None
@@ -175,7 +175,7 @@ class ForecastingService:
         )
 
         # 5. Dual guard: must have >=4 distinct readings AND >=4 MA buckets
-        if len(distinct_raw_readings) < 4 or len(ma_buckets) < 4:
+        if len(distinct_reading_ids) < 4 or len(ma_buckets) < 4:
             return DeviceForecastResponse(
                 device_id=device_id,
                 generated_at=now,
