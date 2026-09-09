@@ -53,13 +53,6 @@ class DeviceService:
         await self.db["devices"].insert_one(doc)
         return device
 
-    async def get_device(self, device_id: str) -> Optional[Device]:
-        """Fetch device by ID."""
-        doc = await self.db["devices"].find_one({"device_id": device_id})
-        if doc:
-            return Device(**doc)
-        return None
-
     async def list_devices(self) -> List[Device]:
         cursor = self.db["devices"].find()
         docs = await cursor.to_list(length=1000)
