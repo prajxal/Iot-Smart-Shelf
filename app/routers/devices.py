@@ -1,15 +1,4 @@
-"""Router for shelf devices, assignments, calibrations, alerts, and status.
-
-Endpoints:
-- GET /devices/{device_id}/status: Latest reading + SRI + fan state + active commodity.
-- GET /devices/{device_id}/alerts: Alert history (open + resolved).
-- GET /devices/{device_id}/assignment: Current commodity assignment.
-- PUT /devices/{device_id}/assignment: Reassign commodity (enforces overlap protection).
-- POST /devices: Register a new device.
-- GET /devices: List all devices.
-- POST /devices/{device_id}/calibration: Register device calibration.
-- GET /devices/{device_id}/calibration: Get latest calibration.
-"""
+"""Router for shelf devices, assignments, calibrations, alerts, and status."""
 
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status

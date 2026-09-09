@@ -1,9 +1,4 @@
-"""Router for querying reference commodity profiles.
-
-Endpoints:
-- GET /commodities: List available commodity profiles (id, current version, key thresholds).
-- GET /commodities/{commodity_type}: Get latest profile for a given commodity.
-"""
+"""Router for querying reference commodity profiles."""
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status

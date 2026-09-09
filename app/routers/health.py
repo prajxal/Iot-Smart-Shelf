@@ -1,8 +1,4 @@
-"""Health and liveness router.
-
-Endpoint:
-- GET /health: Liveness and database connectivity probe.
-"""
+"""Health and liveness router."""
 
 from datetime import datetime, timezone
 from typing import Any, Dict

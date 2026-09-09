@@ -1,9 +1,4 @@
-"""Router for sensor readings ingress and history queries.
-
-Endpoints:
-- POST /devices/{device_id}/readings: Critical path for ESP32 sensor ingress.
-- GET /devices/{device_id}/history: Time-range historical readings query.
-"""
+"""Router for sensor readings ingress and history queries."""
 
 from datetime import datetime
 from typing import List, Optional
