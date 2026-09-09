@@ -84,7 +84,7 @@ class CommodityProfile(BaseModel):
         Otherwise falls back to self.q10 or 1.0.
         """
         if self.q10_bands and temp_c is not None:
-            parsed_bands: List[Tuple[float, float, float]] = []
+            parsed_bands = []
             for band_key, band_val in self.q10_bands.items():
                 try:
                     low_s, high_s = band_key.split("_")
