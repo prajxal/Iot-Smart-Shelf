@@ -55,16 +55,7 @@ def get_database() -> AsyncIOMotorDatabase:
 
 
 async def init_db_indexes(db: AsyncIOMotorDatabase) -> None:
-    """Create indexes specified in PRD §6 and data models.
-
-    Indexes:
-    - commodity_profiles: {commodity_type: 1, effective_from: -1}
-    - device_calibration: {device_id: 1, effective_from: -1}
-    - device_assignments: {device_id: 1, end_at: 1}, {device_id: 1, start_at: -1}
-    - readings: {device_id: 1, device_timestamp: -1}, {reading_id: 1} (unique)
-    - alerts: {device_id: 1, status: 1}, {alert_id: 1} (unique)
-    - devices: {device_id: 1} (unique)
-    """
+    """Create indexes specified in PRD §6 and data models."""
     logger.info("Initializing database indexes...")
 
     # commodity_profiles (PRD §3.1 / §6)
