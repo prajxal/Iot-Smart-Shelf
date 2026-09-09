@@ -38,12 +38,7 @@ async def create_device_reading(
     try:
         response = await service.process_reading(device_id=device_id, payload=payload)
         return response
-    except NoActiveAssignmentError as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(err),
-        ) from err
-    except ProfileNotFoundError as err:
+    except (NoActiveAssignmentError, ProfileNotFoundError) as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(err),
