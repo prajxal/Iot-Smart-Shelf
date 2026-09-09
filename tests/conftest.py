@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import AsyncGenerator
 import httpx
 from mongomock_motor import AsyncMongoMockClient
-import pytest
 import pytest_asyncio
 
 from app.db import db_manager, get_database, init_db_indexes

@@ -9,7 +9,7 @@ Validates PRD §5 algorithmic rules:
 - §6: Resilience (actuation command returned even if DB persistence fails)
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 import pytest
 from datetime import datetime, timezone
 from app.config import settings
@@ -20,7 +20,6 @@ from app.models.reading import ReadingCreate
 from app.services.spoilage import (
     CalibrationNotFoundError,
     NoActiveAssignmentError,
-    ProfileNotFoundError,
     SpoilageService,
     normalize_temp_term,
 )
