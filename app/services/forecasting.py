@@ -11,15 +11,10 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import settings
+from app.models.common import ensure_utc
 from app.models.forecast import DeviceForecastResponse, ForecastPoint
 
 logger = logging.getLogger("smart_shelf.forecasting")
-
-
-def ensure_utc(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 def compute_time_moving_averages(

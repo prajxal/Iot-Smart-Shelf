@@ -4,7 +4,6 @@ Source of truth for fields: PRD §3.1, §3.7, and commodity-profiles.json.
 All numeric values are loaded directly from USDA Handbook 66 reference data.
 """
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.common import PyObjectId, UtcDatetime
@@ -111,7 +110,7 @@ class CommodityProfileSummary(BaseModel):
     """Summarized commodity profile view for listing."""
 
     commodity_type: str
-    effective_from: datetime
+    effective_from: UtcDatetime
     optimal_temp_min: Optional[float] = None
     optimal_temp_max: Optional[float] = None
     optimal_rh_min: Optional[float] = None
