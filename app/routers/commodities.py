@@ -29,20 +29,7 @@ async def list_commodities(
             sort=[("effective_from", -1)],
         )
         if doc:
-            summaries.append(
-                CommodityProfileSummary(
-                    commodity_type=doc["commodity_type"],
-                    effective_from=doc["effective_from"],
-                    optimal_temp_min=doc.get("optimal_temp_min"),
-                    optimal_temp_max=doc.get("optimal_temp_max"),
-                    optimal_rh_min=doc.get("optimal_rh_min"),
-                    optimal_rh_max=doc.get("optimal_rh_max"),
-                    chilling_threshold_c=doc.get("chilling_threshold_c"),
-                    reference_temp_c=doc.get("reference_temp_c"),
-                    q10=doc.get("q10"),
-                    source=doc.get("source"),
-                )
-            )
+            summaries.append(CommodityProfileSummary(**doc))
 
     return summaries
 
