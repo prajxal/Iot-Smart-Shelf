@@ -85,8 +85,7 @@ async def reassign_device_commodity(
 ) -> DeviceAssignment:
     service = DeviceService(db)
     try:
-        assignment = await service.reassign_commodity(device_id, payload)
-        return assignment
+        return await service.reassign_commodity(device_id, payload)
     except CommodityNotFoundError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

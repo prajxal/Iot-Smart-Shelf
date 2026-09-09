@@ -36,8 +36,7 @@ async def create_device_reading(
 ) -> ReadingResponse:
     service = SpoilageService(db)
     try:
-        response = await service.process_reading(device_id=device_id, payload=payload)
-        return response
+        return await service.process_reading(device_id=device_id, payload=payload)
     except (NoActiveAssignmentError, ProfileNotFoundError) as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
