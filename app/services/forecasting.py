@@ -137,18 +137,10 @@ class ForecastingService:
         )
         commodity_type: Optional[str] = assignment.get("commodity_type") if assignment else None
 
-        profile_doc = None
-        if commodity_type:
-            profile_doc = await self.db["commodity_profiles"].find_one(
-                {
-                    "commodity_type": commodity_type,
-                    "effective_from": {"$lte": now},
-                },
-                sort=[("effective_from", -1)],
-            )
-
-        fan_threshold = (profile_doc.get("sri_on") if profile_doc else None) or settings.sri_on
-        alert_threshold = (profile_doc.get("alert_threshold") if profile_doc else None) or settings.alert_threshold
+        # Thresholds are engineering tunables, not per-commodity biological data,
+        # so they come from settings rather than the commodity profile.
+        fan_threshold = settings.sri_on
+        alert_threshold = settings.alert_threshold
 
         # Latest raw SRI
         current_sri: Optional[float] = None
