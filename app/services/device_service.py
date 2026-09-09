@@ -27,10 +27,6 @@ class CommodityNotFoundError(DeviceServiceError):
     """Raised when assigning an unknown commodity_type."""
 
 
-class DeviceNotFoundError(DeviceServiceError):
-    """Raised when a requested device is not found."""
-
-
 class DeviceService:
     """Service for device lifecycle, assignments, and calibration."""
 

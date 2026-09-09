@@ -9,11 +9,7 @@ from app.models.alert import Alert
 from app.models.device import Device, DeviceCreate
 from app.models.device_assignment import DeviceAssignment, DeviceAssignmentCreate
 from app.models.device_calibration import DeviceCalibration, DeviceCalibrationCreate
-from app.services.device_service import (
-    CommodityNotFoundError,
-    DeviceNotFoundError,
-    DeviceService,
-)
+from app.services.device_service import CommodityNotFoundError, DeviceService
 
 router = APIRouter(tags=["devices"])
 
