@@ -66,15 +66,15 @@ def normalize_temp_term(temp_term: float) -> float:
     return clamp(temp_term / (1.0 + temp_term), 0.0, 1.0)
 
 
-def normalize_gas_signal(gas_signal: float, span: Optional[float] = None) -> float:
+def normalize_gas_signal(gas_signal: float) -> float:
     """Normalize gas signal (Rs/Ro ratio) to [0.0, 1.0].
 
     gas_signal = gas_raw / mq135_baseline.
     1.0 is baseline clean air. Above 1.0 indicates gas accumulation.
     """
-    span_val = span or settings.gas_signal_span
-    if span_val <= 0:
-        span_val = 1.0
+    # Guards a misconfigured SMART_SHELF_GAS_SIGNAL_SPAN=0 from dividing by zero
+    # on the ingress critical path.
+    span_val = settings.gas_signal_span if settings.gas_signal_span > 0 else 1.0
     excess = gas_signal - settings.gas_signal_baseline
     if excess <= 0:
         return 0.0
