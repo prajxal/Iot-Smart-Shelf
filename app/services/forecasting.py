@@ -24,7 +24,7 @@ def compute_time_moving_averages(
     bucket_step_minutes: float = 5.0,
     bucket_half_width_minutes: float = 7.5,
 ) -> List[Tuple[datetime, float]]:
-    """Compute moving average of the `spoilage_index` field in time-based buckets.
+    """Compute moving average of the `sri` field in time-based buckets.
 
     Buckets are centered every `bucket_step_minutes` (e.g. -25m, -20m, ..., 0m from ref_time).
     Each bucket averages all readings with device_timestamp within ±`bucket_half_width_minutes`
@@ -46,7 +46,7 @@ def compute_time_moving_averages(
         sri_values: List[float] = []
         for r in readings:
             ts = r.get("device_timestamp")
-            sri = r.get("spoilage_index")
+            sri = r.get("sri")
             if ts is not None and sri is not None:
                 ts_utc = ensure_utc(ts)
                 diff_sec = abs((ts_utc - center_time).total_seconds())
@@ -102,7 +102,7 @@ class ForecastingService:
 
         Steps:
         1. Fetch readings for device_id from the last 40 minutes (covers >= 37.5m back).
-        2. Resolve active commodity and thresholds (fan_threshold, alert_threshold).
+        2. Resolve active commodity and thresholds (sri_fan_on, alert_threshold).
         3. Check distinct raw readings count and compute time-based moving average buckets.
         4. If <4 distinct readings OR <4 valid MA buckets, return insufficient_data=True.
         5. Fit least-squares linear trend over the last 4 MA buckets to get trend_slope_per_min.
@@ -134,15 +134,15 @@ class ForecastingService:
 
         # Thresholds are engineering tunables, not per-commodity biological data,
         # so they come from settings rather than the commodity profile.
-        fan_threshold = settings.sri_on
+        sri_fan_on = settings.sri_fan_on
         alert_threshold = settings.alert_threshold
 
         # Latest raw SRI
         current_sri: Optional[float] = None
         if recent_readings:
             for r in reversed(recent_readings):
-                if r.get("spoilage_index") is not None:
-                    current_sri = float(r["spoilage_index"])
+                if r.get("sri") is not None:
+                    current_sri = float(r["sri"])
                     break
 
         if current_sri is None:
@@ -150,14 +150,14 @@ class ForecastingService:
                 {"device_id": device_id, "device_timestamp": {"$lte": now}},
                 sort=[("device_timestamp", -1)],
             )
-            if latest_doc and latest_doc.get("spoilage_index") is not None:
-                current_sri = float(latest_doc["spoilage_index"])
+            if latest_doc and latest_doc.get("sri") is not None:
+                current_sri = float(latest_doc["sri"])
 
         # 3. Check distinct raw readings count
         distinct_reading_ids = {
             r.get("reading_id") or str(r.get("device_timestamp"))
             for r in recent_readings
-            if r.get("spoilage_index") is not None
+            if r.get("sri") is not None
         }
 
         # 4. Compute moving average buckets
@@ -176,7 +176,7 @@ class ForecastingService:
                 generated_at=now,
                 commodity=commodity_type,
                 current_sri=current_sri,
-                fan_threshold=fan_threshold,
+                sri_fan_on=sri_fan_on,
                 alert_threshold=alert_threshold,
                 trend_slope_per_min=None,
                 insufficient_data=True,
@@ -205,7 +205,7 @@ class ForecastingService:
             generated_at=now,
             commodity=commodity_type,
             current_sri=current_sri,
-            fan_threshold=fan_threshold,
+            sri_fan_on=sri_fan_on,
             alert_threshold=alert_threshold,
             trend_slope_per_min=round(trend_slope_per_min, 6),
             insufficient_data=False,

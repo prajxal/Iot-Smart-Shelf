@@ -289,7 +289,7 @@ async def test_chilling_injury_safety_interlock(sample_device_setup, seeded_db):
     """PRD §5.3: Chilling Injury Safety Interlock overrides SRI unconditionally.
 
     Tomato chilling injury threshold = 13.0 °C (from AH-66 pp. 581-585).
-    Even when spoilage risk (SRI) is very high (e.g. 0.85 >= sri_on 0.60),
+    Even when spoilage risk (SRI) is very high (e.g. 0.85 >= sri_fan_on 0.60),
     if ambient temperature is <= 13.0 °C, the exhaust fan MUST be forced OFF
     to prevent catastrophic chilling injury.
     """
@@ -297,9 +297,9 @@ async def test_chilling_injury_safety_interlock(sample_device_setup, seeded_db):
     now = datetime.now(timezone.utc)
     _, profile, calibration = await service.resolve_context("shelf-01", now)
 
-    # High SRI value (>= sri_on 0.60)
+    # High SRI value (>= sri_fan_on 0.60)
     sri_high = 0.85
-    assert sri_high >= settings.sri_on  # Would normally turn fan ON
+    assert sri_high >= settings.sri_fan_on  # Would normally turn fan ON
 
     # Test interlock evaluation directly below chilling threshold (12.0 °C)
     fan_cmd, interlock_triggered, gas_override = service.evaluate_fan_command(
@@ -382,8 +382,8 @@ async def test_gas_override_safety_trigger(sample_device_setup, seeded_db):
     """PRD §5.3: Extreme gas triggers fan ON and alert OPEN independent of composite SRI.
 
     When gas_term >= gas_override_threshold (0.90), even if temp and RH are within optimal
-    ranges (resulting in a low composite SRI < alert_threshold 0.70 and < sri_on 0.60),
-    the fan must turn ON and an alert must be opened with peak_risk_value equal to the
+    ranges (resulting in a low composite SRI < alert_threshold 0.70 and < sri_fan_on 0.60),
+    the fan must turn ON and an alert must be opened with peak_sri equal to the
     actual composite SRI (audit integrity).
     """
     service = SpoilageService(seeded_db)
@@ -392,7 +392,7 @@ async def test_gas_override_safety_trigger(sample_device_setup, seeded_db):
 
     # Tomato setup: optimal temp 13-21°C, optimal RH 90-95%, baseline 100.0
     # Reading with normal temp (20.0°C) and normal RH (92.0%), but extreme gas (raw = 300.0 -> gas_signal = 3.0 -> gas_term = 1.0 >= 0.90)
-    # Composite SRI = 0.50 * 0.0 + 0.30 * 0.0 + 0.20 * 1.0 = 0.20 (< alert_threshold 0.70 and < sri_on 0.60)
+    # Composite SRI = 0.50 * 0.0 + 0.30 * 0.0 + 0.20 * 1.0 = 0.20 (< alert_threshold 0.70 and < sri_fan_on 0.60)
     payload = ReadingCreate(
         device_seq=1,
         device_timestamp=now,
@@ -404,20 +404,20 @@ async def test_gas_override_safety_trigger(sample_device_setup, seeded_db):
     response = await service.process_reading(device_id, payload)
 
     # 1. Composite SRI is low (0.20)
-    assert response.spoilage_index == pytest.approx(0.20, abs=1e-4)
-    assert response.spoilage_index < settings.alert_threshold
-    assert response.spoilage_index < settings.sri_on
+    assert response.sri == pytest.approx(0.20, abs=1e-4)
+    assert response.sri < settings.alert_threshold
+    assert response.sri < settings.sri_fan_on
 
     # 2. Fan command is forced ON by gas override
     assert response.fan_command == "on"
     assert response.gas_override_triggered is True
     assert response.interlock_triggered is False
 
-    # 3. Alert is opened in DB with actual composite SRI recorded as peak_risk_value
+    # 3. Alert is opened in DB with actual composite SRI recorded as peak_sri
     alert_doc = await seeded_db["alerts"].find_one({"device_id": device_id, "status": "open"})
     assert alert_doc is not None
     assert alert_doc["opened_by_reading_id"] == response.reading_id
-    assert alert_doc["peak_risk_value"] == pytest.approx(response.spoilage_index, abs=1e-4)
+    assert alert_doc["peak_sri"] == pytest.approx(response.sri, abs=1e-4)
 
 
 @pytest.mark.asyncio
@@ -465,30 +465,30 @@ async def test_chilling_interlock_prioritized_over_gas_override(sample_device_se
 
 @pytest.mark.asyncio
 async def test_hysteresis_fan_control(sample_device_setup, seeded_db):
-    """PRD §5.3: Test hysteresis state logic (sri_on = 0.60, sri_off = 0.40)."""
+    """PRD §5.3: Test hysteresis state logic (sri_fan_on = 0.60, sri_fan_off = 0.40)."""
     service = SpoilageService(seeded_db)
     now = datetime.now(timezone.utc)
     _, profile, _ = await service.resolve_context("shelf-01", now)
 
-    # From OFF: SRI = 0.50 (< sri_on) -> stays OFF
+    # From OFF: SRI = 0.50 (< sri_fan_on) -> stays OFF
     cmd, _, _ = service.evaluate_fan_command(
         temp_c=20.0, sri=0.50, gas_term=0.0, profile=profile, previous_fan_state="off"
     )
     assert cmd == "off"
 
-    # From OFF: SRI = 0.65 (>= sri_on) -> turns ON
+    # From OFF: SRI = 0.65 (>= sri_fan_on) -> turns ON
     cmd, _, _ = service.evaluate_fan_command(
         temp_c=20.0, sri=0.65, gas_term=0.0, profile=profile, previous_fan_state="off"
     )
     assert cmd == "on"
 
-    # From ON: SRI = 0.50 (>= sri_off) -> stays ON (hysteresis band)
+    # From ON: SRI = 0.50 (>= sri_fan_off) -> stays ON (hysteresis band)
     cmd, _, _ = service.evaluate_fan_command(
         temp_c=20.0, sri=0.50, gas_term=0.0, profile=profile, previous_fan_state="on"
     )
     assert cmd == "on"
 
-    # From ON: SRI = 0.35 (< sri_off) -> turns OFF
+    # From ON: SRI = 0.35 (< sri_fan_off) -> turns OFF
     cmd, _, _ = service.evaluate_fan_command(
         temp_c=20.0, sri=0.35, gas_term=0.0, profile=profile, previous_fan_state="on"
     )
@@ -511,15 +511,15 @@ async def test_alert_lifecycle(sample_device_setup, seeded_db):
         gas_raw=300.0,
     )
     response_1 = await service.process_reading(device_id, high_reading)
-    assert response_1.spoilage_index >= settings.alert_threshold
+    assert response_1.sri >= settings.alert_threshold
 
     # Verify open alert was created with opened_by_reading_id
     alert_doc = await seeded_db["alerts"].find_one({"device_id": device_id, "status": "open"})
     assert alert_doc is not None
     assert alert_doc["opened_by_reading_id"] == response_1.reading_id
-    assert alert_doc["peak_risk_value"] == pytest.approx(response_1.spoilage_index, abs=1e-4)
+    assert alert_doc["peak_sri"] == pytest.approx(response_1.sri, abs=1e-4)
 
-    # Step 2: Higher SRI reading updates peak_risk_value
+    # Step 2: Higher SRI reading updates peak_sri
     higher_reading = ReadingCreate(
         device_seq=2,
         device_timestamp=now,
@@ -528,10 +528,10 @@ async def test_alert_lifecycle(sample_device_setup, seeded_db):
         gas_raw=300.0,
     )
     response_2 = await service.process_reading(device_id, higher_reading)
-    assert response_2.spoilage_index > response_1.spoilage_index
+    assert response_2.sri > response_1.sri
 
     alert_doc_updated = await seeded_db["alerts"].find_one({"device_id": device_id, "status": "open"})
-    assert alert_doc_updated["peak_risk_value"] == pytest.approx(response_2.spoilage_index, abs=1e-4)
+    assert alert_doc_updated["peak_sri"] == pytest.approx(response_2.sri, abs=1e-4)
     # Original audit link remains unchanged
     assert alert_doc_updated["opened_by_reading_id"] == response_1.reading_id
 
@@ -544,7 +544,7 @@ async def test_alert_lifecycle(sample_device_setup, seeded_db):
         gas_raw=100.0,
     )
     response_3 = await service.process_reading(device_id, low_reading)
-    assert response_3.spoilage_index < settings.alert_resolve_threshold
+    assert response_3.sri < settings.alert_resolve_threshold
 
     # Verify alert is resolved
     open_alert = await seeded_db["alerts"].find_one({"device_id": device_id, "status": "open"})
@@ -573,7 +573,7 @@ async def test_resilience_on_database_write_failure(sample_device_setup, seeded_
         assert response is not None
         assert response.device_id == "shelf-01"
         assert response.fan_command in ["on", "off"]
-        assert response.spoilage_index is not None
+        assert response.sri is not None
 
 
 @pytest.mark.asyncio

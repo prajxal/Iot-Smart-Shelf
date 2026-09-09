@@ -80,7 +80,7 @@ async def test_device_status_endpoint(sample_device_setup, async_client: AsyncCl
     assert data["active_commodity"] == "tomato"
     assert data["latest_reading"] is not None
     assert data["latest_reading"]["device_seq"] == 101
-    assert "spoilage_index" in data
+    assert "sri" in data
     assert "fan_command" in data
 
 

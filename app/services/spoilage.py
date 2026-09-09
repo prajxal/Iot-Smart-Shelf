@@ -284,9 +284,9 @@ class SpoilageService:
 
         # Hysteresis fan control (PRD §5.3)
         if previous_fan_state == "on":
-            command = "off" if sri < settings.sri_off else "on"
+            command = "off" if sri < settings.sri_fan_off else "on"
         else:
-            command = "on" if sri >= settings.sri_on else "off"
+            command = "on" if sri >= settings.sri_fan_on else "off"
 
         return command, False, False
 
@@ -301,7 +301,7 @@ class SpoilageService:
         """PRD §5.4: Alert lifecycle management.
 
         - If SRI >= alert_threshold or force_open (gas override): open one with opened_by_reading_id.
-        - While open: update peak_risk_value on higher SRI.
+        - While open: update peak_sri on higher SRI.
         - If SRI < alert_resolve_threshold and alert open: resolve it.
         """
         open_alert_doc = await self.db["alerts"].find_one(
@@ -320,7 +320,7 @@ class SpoilageService:
                     status="open",
                     opened_at=timestamp,
                     resolved_at=None,
-                    peak_risk_value=sri,
+                    peak_sri=sri,
                     opened_by_reading_id=reading_id,
                 )
                 alert_dict = alert.model_dump(by_alias=True)
@@ -330,13 +330,13 @@ class SpoilageService:
                 return alert
             else:
                 # Update peak risk value if current SRI is higher
-                current_peak = open_alert_doc.get("peak_risk_value", 0.0)
+                current_peak = open_alert_doc.get("peak_sri", 0.0)
                 if sri > current_peak:
                     await self.db["alerts"].update_one(
                         {"_id": open_alert_doc["_id"]},
-                        {"$set": {"peak_risk_value": sri}},
+                        {"$set": {"peak_sri": sri}},
                     )
-                    open_alert_doc["peak_risk_value"] = sri
+                    open_alert_doc["peak_sri"] = sri
                 return Alert(**open_alert_doc)
 
         elif sri < settings.alert_resolve_threshold:
@@ -416,7 +416,7 @@ class SpoilageService:
             humidity_pct=payload.humidity_pct,
             gas_raw=payload.gas_raw,
             sensor_status=payload.sensor_status or "ok",
-            spoilage_index=sri,
+            sri=sri,
             fan_commanded=fan_commanded,
         )
 
@@ -439,7 +439,7 @@ class SpoilageService:
             reading_id=reading_id,
             device_id=device_id,
             fan_command=fan_cmd,
-            spoilage_index=sri,
+            sri=sri,
             interlock_triggered=interlock_triggered,
             gas_override_triggered=gas_override_triggered,
             sensor_status=payload.sensor_status or "ok",

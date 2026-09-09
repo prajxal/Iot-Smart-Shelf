@@ -116,7 +116,7 @@ Current-calibration lookup: same pattern as commodity_profiles — latest `effec
   "humidity_pct": 68.2,
   "gas_raw": 412,
   "sensor_status": "ok",
-  "spoilage_index": 0.62,
+  "sri": 0.62,
   "fan_commanded": true
 }
 ```
@@ -134,7 +134,7 @@ Current-calibration lookup: same pattern as commodity_profiles — latest `effec
   "status": "open",
   "opened_at": "ISODate",
   "resolved_at": null,
-  "peak_risk_value": 0.81,
+  "peak_sri": 0.81,
   "opened_by_reading_id": "rd-000001"
 }
 ```
@@ -198,15 +198,15 @@ SRI = clamp(w1 * normalize(temp_term) + w2 * rh_term + w3 * gas_term, 0, 1)
 if temp_c <= profile.chilling_threshold_c (or optimal_temp_min if no explicit threshold):
     fan_command = "off"      # never vent in air that risks chilling injury, regardless of SRI
 else:
-    fan_command = hysteresis(SRI, sri_on, sri_off, previous_state)
+    fan_command = hysteresis(SRI, sri_fan_on, sri_fan_off, previous_state)
 ```
 
 ### 5.4 Alerting
-If `SRI >= alert_threshold` and no `alerts` document is currently `open` for this device, open one with `opened_by_reading_id` set to this reading and `peak_risk_value = SRI`. While open, update `peak_risk_value` on any later reading with a higher SRI. Close (`status: "resolved"`, `resolved_at`) once SRI drops below a resolve threshold for some minimum duration (avoid flapping).
+If `SRI >= alert_threshold` and no `alerts` document is currently `open` for this device, open one with `opened_by_reading_id` set to this reading and `peak_sri = SRI`. While open, update `peak_sri` on any later reading with a higher SRI. Close (`status: "resolved"`, `resolved_at`) once SRI drops below a resolve threshold for some minimum duration (avoid flapping).
 
 ### 5.5 Output per reading
 - `fan_command`: `on` / `off`
-- `spoilage_index`: the SRI value, persisted on the reading itself (per your schema — no separate `sri_scores` collection)
+- `sri`: the SRI value, persisted on the reading itself (per your schema — no separate `sri_scores` collection)
 
 ---
 
@@ -221,7 +221,7 @@ If `SRI >= alert_threshold` and no `alerts` document is currently `open` for thi
 
 1. **Sampling and evaluation frequency.** How often does the ESP32 sample and post? Is SRI recomputed every sample?
 2. **Gas term baseline.** `gas_term` above is commodity-agnostic — the MQ-135 reads one physical signal regardless of which commodity is assigned. If gas-threshold interpretation should actually vary per commodity, that needs its own field on `commodity_profiles` (not currently in the JSON either — would need a follow-up extraction).
-3. **`w1, w2, w3` weights and `sri_on`/`sri_off`/`alert_threshold` values.** These are tuning constants, not sourced from Handbook 66 — they need to come from your own calibration/testing, not the reference files.
+3. **`w1, w2, w3` weights and `sri_fan_on`/`sri_fan_off`/`alert_threshold` values.** These are tuning constants, not sourced from Handbook 66 — they need to come from your own calibration/testing, not the reference files.
 4. **Auth/security scope.** Defense-demo-only, or device tokens?
 5. **Connectivity fallback.** Any local ESP32 fallback logic if the backend is unreachable?
 6. **Data retention.** Any expectation to downsample/archive `readings`?

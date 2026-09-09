@@ -32,7 +32,7 @@ async def test_post_reading_critical_path(sample_device_setup, seeded_db, async_
     assert data["device_id"] == device_id
     assert "reading_id" in data
     assert data["fan_command"] in ["on", "off"]
-    assert 0.0 <= data["spoilage_index"] <= 1.0
+    assert 0.0 <= data["sri"] <= 1.0
     assert data["sensor_status"] == "ok"
 
     # Verify document was saved in readings collection
@@ -42,7 +42,7 @@ async def test_post_reading_critical_path(sample_device_setup, seeded_db, async_
     assert reading_doc["temp_c"] == 28.0
     assert reading_doc["humidity_pct"] == 75.0
     assert reading_doc["gas_raw"] == 220.0
-    assert reading_doc["spoilage_index"] == data["spoilage_index"]
+    assert reading_doc["sri"] == data["sri"]
 
 
 @pytest.mark.asyncio

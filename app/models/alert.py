@@ -19,7 +19,7 @@ class Alert(BaseModel):
     status: str = Field(default="open", description="Alert status: 'open' or 'resolved'")
     opened_at: UtcDatetime = Field(..., description="Timestamp when alert was triggered (always UTC)")
     resolved_at: OptionalUtcDatetime = Field(default=None, description="Timestamp when risk subsided (always UTC)")
-    peak_risk_value: float = Field(..., description="Highest SRI value recorded during this alert episode")
+    peak_sri: float = Field(..., description="Highest SRI value recorded during this alert episode")
     opened_by_reading_id: Optional[str] = Field(
         default=None,
         description="ID of the reading that originally tripped the alert threshold (audit link)",

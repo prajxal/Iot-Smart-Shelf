@@ -201,14 +201,14 @@ function updateDashboardView(historyReadings, forecast) {
   );
 
   const historyPoints = sortedHistory
-    .filter((r) => r.spoilage_index !== null && r.spoilage_index !== undefined)
+    .filter((r) => r.sri !== null && r.sri !== undefined)
     .map((r) => ({
       x: new Date(r.device_timestamp),
-      y: Number(r.spoilage_index),
+      y: Number(r.sri),
     }));
 
   let forecastPoints = [];
-  const fanThresh = (forecast && forecast.fan_threshold) || 0.60;
+  const sriFanOn = (forecast && forecast.sri_fan_on) || 0.60;
   const alertThresh = (forecast && forecast.alert_threshold) || 0.70;
 
   // Status card: Commodity
@@ -231,7 +231,7 @@ function updateDashboardView(historyReadings, forecast) {
     if (currentSri >= alertThresh) {
       sriRiskBadge.textContent = "HIGH RISK";
       sriRiskBadge.className = "badge badge-danger";
-    } else if (currentSri >= fanThresh) {
+    } else if (currentSri >= sriFanOn) {
       sriRiskBadge.textContent = "FAN ACTIVE";
       sriRiskBadge.className = "badge badge-caution";
     } else {
@@ -291,15 +291,15 @@ function updateDashboardView(historyReadings, forecast) {
   }
 
   const fanGuidePoints = [
-    { x: minTime, y: fanThresh },
-    { x: maxTime, y: fanThresh },
+    { x: minTime, y: sriFanOn },
+    { x: maxTime, y: sriFanOn },
   ];
   const alertGuidePoints = [
     { x: minTime, y: alertThresh },
     { x: maxTime, y: alertThresh },
   ];
 
-  fanLegend.textContent = `Fan ON Threshold (${fanThresh.toFixed(2)})`;
+  fanLegend.textContent = `Fan ON Threshold (${sriFanOn.toFixed(2)})`;
   alertLegend.textContent = `Alert Threshold (${alertThresh.toFixed(2)})`;
 
   // Update Chart.js datasets in place

@@ -161,7 +161,7 @@ class DeviceService:
                 "device_id": device_id,
                 "active_commodity": active_commodity,
                 "latest_reading": None,
-                "spoilage_index": None,
+                "sri": None,
                 "fan_command": "off",
                 "fan_commanded": False,
             }
@@ -173,7 +173,7 @@ class DeviceService:
             "device_id": device_id,
             "active_commodity": active_commodity,
             "latest_reading": reading,
-            "spoilage_index": reading.spoilage_index,
+            "sri": reading.sri,
             "fan_command": fan_cmd,
             "fan_commanded": reading.fan_commanded,
         }
