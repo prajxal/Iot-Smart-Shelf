@@ -38,7 +38,6 @@ class DeviceService:
         self.db = db
 
     async def register_device(self, payload: DeviceCreate) -> Device:
-        """Register a new shelf hardware unit."""
         existing = await self.db["devices"].find_one({"device_id": payload.device_id})
         if existing:
             return Device(**existing)
@@ -62,7 +61,6 @@ class DeviceService:
         return None
 
     async def list_devices(self) -> List[Device]:
-        """List all registered shelf devices."""
         cursor = self.db["devices"].find()
         docs = await cursor.to_list(length=1000)
         return [Device(**d) for d in docs]
@@ -150,7 +148,6 @@ class DeviceService:
         return cal
 
     async def get_latest_calibration(self, device_id: str) -> Optional[DeviceCalibration]:
-        """Fetch the most recent calibration for device."""
         doc = await self.db["device_calibration"].find_one(
             {"device_id": device_id},
             sort=[("effective_from", -1)],

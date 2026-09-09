@@ -38,7 +38,6 @@ async def get_device_status(
     device_id: str,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
-    """Fetch real-time device status."""
     service = DeviceService(db)
     return await service.get_device_status(device_id)
 
@@ -55,7 +54,6 @@ async def get_device_alerts(
     limit: int = Query(50, ge=1, le=500, description="Max alerts to return"),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> List[Alert]:
-    """Fetch alerts for device."""
     query: dict = {"device_id": device_id}
     if status_filter:
         query["status"] = status_filter
@@ -75,7 +73,6 @@ async def get_active_assignment(
     device_id: str,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> DeviceAssignment:
-    """Fetch active assignment."""
     service = DeviceService(db)
     assignment = await service.get_active_assignment(device_id)
     if not assignment:
@@ -101,7 +98,6 @@ async def reassign_device_commodity(
     payload: DeviceAssignmentCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> DeviceAssignment:
-    """Reassign commodity for a shelf device."""
     service = DeviceService(db)
     try:
         assignment = await service.reassign_commodity(device_id, payload)
@@ -153,7 +149,6 @@ async def add_device_calibration(
     payload: DeviceCalibrationCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> DeviceCalibration:
-    """Register calibration record for device."""
     service = DeviceService(db)
     return await service.add_calibration(device_id, payload)
 

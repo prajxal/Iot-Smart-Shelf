@@ -31,7 +31,6 @@ class DatabaseManager:
         return self.db
 
     def close(self) -> None:
-        """Close connection to MongoDB."""
         if self.client is not None:
             logger.info("Closing MongoDB connection.")
             self.client.close()
@@ -39,7 +38,6 @@ class DatabaseManager:
         self.db = None
 
     def get_db(self) -> AsyncIOMotorDatabase:
-        """Get the current database instance."""
         if self.db is None:
             self.connect()
         return self.db
@@ -53,7 +51,6 @@ db_manager = DatabaseManager()
 
 
 def get_database() -> AsyncIOMotorDatabase:
-    """Dependency helper to get active database."""
     return db_manager.get_db()
 
 

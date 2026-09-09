@@ -39,7 +39,6 @@ async def create_device_reading(
     payload: ReadingCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> ReadingResponse:
-    """Process incoming sensor reading from ESP32."""
     service = SpoilageService(db)
     try:
         response = await service.process_reading(device_id=device_id, payload=payload)
@@ -74,7 +73,6 @@ async def get_device_reading_history(
     limit: int = Query(100, ge=1, le=1000, description="Max readings to return (default 100, max 1000)"),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> List[Reading]:
-    """Query time-range historical readings for device."""
     query: dict = {"device_id": device_id}
     time_filter: dict = {}
     if start_time:

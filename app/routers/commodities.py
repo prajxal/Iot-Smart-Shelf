@@ -24,7 +24,6 @@ router = APIRouter(tags=["commodities"])
 async def list_commodities(
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> List[CommodityProfileSummary]:
-    """List current versions of all commodity profiles."""
     # Find all distinct commodity types
     commodity_types = await db["commodity_profiles"].distinct("commodity_type")
     summaries: List[CommodityProfileSummary] = []

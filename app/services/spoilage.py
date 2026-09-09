@@ -48,7 +48,6 @@ class MissingProfileFieldError(SpoilageServiceError):
 
 
 def clamp(value: float, min_val: float = 0.0, max_val: float = 1.0) -> float:
-    """Clamp a floating point value within [min_val, max_val]."""
     return max(min_val, min(max_val, value))
 
 

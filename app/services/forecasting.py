@@ -17,7 +17,6 @@ logger = logging.getLogger("smart_shelf.forecasting")
 
 
 def ensure_utc(dt: datetime) -> datetime:
-    """Ensure a datetime object is timezone-aware UTC."""
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
