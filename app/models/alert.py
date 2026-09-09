@@ -4,7 +4,6 @@ Source of truth: PRD §3.6 and §3.7.3.
 Tracks high spoilage risk episodes with audit trail back to triggering sensor reading.
 """
 
-from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.common import OptionalUtcDatetime, PyObjectId, UtcDatetime

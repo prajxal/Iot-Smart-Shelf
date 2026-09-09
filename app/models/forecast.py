@@ -3,7 +3,6 @@
 Source of truth: PRD §5 and forecasting service specifications.
 """
 
-from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from app.models.common import UtcDatetime

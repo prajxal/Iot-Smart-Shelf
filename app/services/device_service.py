@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models.commodity_profile import CommodityProfile
 from app.models.device import Device, DeviceCreate
 from app.models.device_assignment import DeviceAssignment, DeviceAssignmentCreate
 from app.models.device_calibration import DeviceCalibration, DeviceCalibrationCreate

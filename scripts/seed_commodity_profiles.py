@@ -14,7 +14,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +24,6 @@ project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.config import settings
 from app.db import db_manager, DatabaseManager, init_db_indexes
 from app.models.commodity_profile import CommodityProfile
 
