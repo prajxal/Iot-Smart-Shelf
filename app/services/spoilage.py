@@ -12,7 +12,7 @@ none are hardcoded, approximated, or invented in this codebase (PRD §0).
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -25,6 +25,15 @@ from app.models.device_calibration import DeviceCalibration
 from app.models.reading import Reading, ReadingCreate, ReadingResponse
 
 logger = logging.getLogger("smart_shelf.spoilage")
+
+# The ESP32 has no RTC: a device_timestamp before this floor is an unset clock
+# (epoch/build-date sentinel), and one further ahead than the skew limit is a
+# garbled clock. Either case is replaced with server time. A device_timestamp
+# further in the past than the floor is otherwise trusted as-is: buffered
+# readings replayed after a WiFi outage legitimately carry old timestamps
+# (PRD.md:123) and must not be collapsed to "now".
+DEVICE_TIMESTAMP_FLOOR = datetime(2024, 1, 1, tzinfo=timezone.utc)
+DEVICE_CLOCK_FORWARD_SKEW_LIMIT = timedelta(minutes=5)
 
 
 class SpoilageServiceError(Exception):
@@ -377,8 +386,14 @@ class SpoilageService:
         4. Reading persistence & Alert lifecycle (§5.4, §5.5)
         5. Synchronous actuation command response (§5.5)
         """
-        device_ts = payload.device_timestamp or datetime.now(timezone.utc)
         server_rx = datetime.now(timezone.utc)
+        device_ts = payload.device_timestamp
+        if (
+            device_ts is None
+            or device_ts < DEVICE_TIMESTAMP_FLOOR
+            or device_ts > server_rx + DEVICE_CLOCK_FORWARD_SKEW_LIMIT
+        ):
+            device_ts = server_rx
         reading_id = f"rd-{uuid4().hex[:8]}"
 
         # Step 1: Resolve context

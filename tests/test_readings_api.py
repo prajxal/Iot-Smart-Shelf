@@ -117,6 +117,186 @@ async def test_reading_history_utc_timezone_fidelity(sample_device_setup, async_
 
 
 @pytest.mark.asyncio
+async def test_post_reading_no_timestamp_is_server_stamped(sample_device_setup, seeded_db, async_client: AsyncClient):
+    """Firmware contract: an ESP32 with no RTC omits device_timestamp; the server stamps it."""
+    device_id = "shelf-01"
+    before = datetime.now(timezone.utc)
+    payload = {
+        "device_seq": 1,
+        "temp_c": 24.0,
+        "humidity_pct": 80.0,
+        "gas_raw": 110.0,
+        "sensor_status": "ok",
+    }
+
+    resp = await async_client.post(f"/devices/{device_id}/readings", json=payload)
+    after = datetime.now(timezone.utc)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["fan_command"] in ["on", "off"]
+
+    reading_doc = await seeded_db["readings"].find_one({"reading_id": data["reading_id"]})
+    stamped_ts = reading_doc["device_timestamp"]
+    if stamped_ts.tzinfo is None:
+        stamped_ts = stamped_ts.replace(tzinfo=timezone.utc)
+    assert before <= stamped_ts <= after
+
+
+@pytest.mark.asyncio
+async def test_post_reading_rejects_nan_temp(sample_device_setup, async_client: AsyncClient):
+    """Firmware contract: a non-finite temp_c (e.g. a bare NaN token in the body) is a clean 422.
+
+    Sent as raw bytes because httpx's `json=` helper refuses to serialize NaN itself
+    (allow_nan=False) -- we need the literal bare `NaN` token on the wire, which is
+    what stdlib json.loads (used by Starlette's Request.json()) accepts as a
+    non-standard extension.
+    """
+    device_id = "shelf-01"
+    raw_body = (
+        b'{"device_seq": 1, "temp_c": NaN, "humidity_pct": 80.0, '
+        b'"gas_raw": 110.0, "sensor_status": "dht22_error"}'
+    )
+
+    resp = await async_client.post(
+        f"/devices/{device_id}/readings",
+        content=raw_body,
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_reading_rejects_null_temp(sample_device_setup, async_client: AsyncClient):
+    """ArduinoJson serializes a NaN float as JSON null, not a bare NaN token; that must 422 too."""
+    device_id = "shelf-01"
+    payload = {
+        "device_seq": 1,
+        "temp_c": None,
+        "humidity_pct": 80.0,
+        "gas_raw": 110.0,
+        "sensor_status": "dht22_error",
+    }
+
+    resp = await async_client.post(f"/devices/{device_id}/readings", json=payload)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_reading_epoch_device_timestamp_replaced_with_server_time(
+    sample_device_setup, seeded_db, async_client: AsyncClient
+):
+    """A device_timestamp before DEVICE_TIMESTAMP_FLOOR is an unset clock and is replaced."""
+    device_id = "shelf-01"
+    epoch_1970 = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    before = datetime.now(timezone.utc)
+    payload = {
+        "device_seq": 1,
+        "device_timestamp": epoch_1970.isoformat(),
+        "temp_c": 24.0,
+        "humidity_pct": 80.0,
+        "gas_raw": 110.0,
+        "sensor_status": "ok",
+    }
+
+    resp = await async_client.post(f"/devices/{device_id}/readings", json=payload)
+    after = datetime.now(timezone.utc)
+
+    assert resp.status_code == 200
+    reading_doc = await seeded_db["readings"].find_one({"reading_id": resp.json()["reading_id"]})
+    stamped_ts = reading_doc["device_timestamp"]
+    if stamped_ts.tzinfo is None:
+        stamped_ts = stamped_ts.replace(tzinfo=timezone.utc)
+    assert stamped_ts != epoch_1970
+    assert before <= stamped_ts <= after
+
+
+@pytest.mark.asyncio
+async def test_post_reading_future_device_timestamp_replaced_with_server_time(
+    sample_device_setup, seeded_db, async_client: AsyncClient
+):
+    """A device_timestamp more than DEVICE_CLOCK_FORWARD_SKEW_LIMIT ahead of now is replaced."""
+    device_id = "shelf-01"
+    future_ts = datetime.now(timezone.utc) + timedelta(minutes=10)
+    before = datetime.now(timezone.utc)
+    payload = {
+        "device_seq": 1,
+        "device_timestamp": future_ts.isoformat(),
+        "temp_c": 24.0,
+        "humidity_pct": 80.0,
+        "gas_raw": 110.0,
+        "sensor_status": "ok",
+    }
+
+    resp = await async_client.post(f"/devices/{device_id}/readings", json=payload)
+    after = datetime.now(timezone.utc)
+
+    assert resp.status_code == 200
+    reading_doc = await seeded_db["readings"].find_one({"reading_id": resp.json()["reading_id"]})
+    stamped_ts = reading_doc["device_timestamp"]
+    if stamped_ts.tzinfo is None:
+        stamped_ts = stamped_ts.replace(tzinfo=timezone.utc)
+    assert stamped_ts != future_ts
+    assert before <= stamped_ts <= after
+
+
+@pytest.mark.asyncio
+async def test_post_reading_past_device_timestamp_preserved(
+    sample_device_setup, seeded_db, async_client: AsyncClient
+):
+    """A plausible past device_timestamp (buffered/replayed reading, PRD.md:123) passes through unchanged."""
+    device_id = "shelf-01"
+    # microsecond=0: BSON datetimes are millisecond-precision, so a value with
+    # microsecond fidelity would spuriously fail equality after the DB round-trip.
+    past_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).replace(microsecond=0)
+    payload = {
+        "device_seq": 1,
+        "device_timestamp": past_ts.isoformat(),
+        "temp_c": 24.0,
+        "humidity_pct": 80.0,
+        "gas_raw": 110.0,
+        "sensor_status": "ok",
+    }
+
+    resp = await async_client.post(f"/devices/{device_id}/readings", json=payload)
+    assert resp.status_code == 200
+
+    reading_doc = await seeded_db["readings"].find_one({"reading_id": resp.json()["reading_id"]})
+    stamped_ts = reading_doc["device_timestamp"]
+    if stamped_ts.tzinfo is None:
+        stamped_ts = stamped_ts.replace(tzinfo=timezone.utc)
+    assert stamped_ts == past_ts
+
+
+@pytest.mark.asyncio
+async def test_post_reading_response_shape_matches_firmware_contract(
+    sample_device_setup, async_client: AsyncClient
+):
+    """Pins the exact ReadingResponse field set so refactors can't silently break the device wire protocol."""
+    device_id = "shelf-01"
+    payload = {
+        "device_seq": 1,
+        "temp_c": 24.0,
+        "humidity_pct": 80.0,
+        "gas_raw": 110.0,
+        "sensor_status": "ok",
+    }
+
+    resp = await async_client.post(f"/devices/{device_id}/readings", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert set(data.keys()) == {
+        "reading_id",
+        "device_id",
+        "fan_command",
+        "sri",
+        "interlock_triggered",
+        "gas_override_triggered",
+        "sensor_status",
+    }
+
+
+@pytest.mark.asyncio
 async def test_commodities_endpoints(seeded_db, async_client: AsyncClient):
     """PRD §4: GET /commodities and GET /commodities/{type}."""
     resp = await async_client.get("/commodities")
