@@ -1,335 +1,720 @@
 /**
- * Smart Shelf Spoilage Risk Index & Forecasting Dashboard
- * Uses Chart.js with date-fns time adapter.
+ * Smart Shelf — what to do about the produce on this shelf, right now.
+ *
+ * Reads the same endpoints as before (/devices, /devices/{id}/status,
+ * /devices/{id}/history, /devices/{id}/forecast) and keeps the 45s poll.
+ * Everything shown here is either an API field or derived from one; nothing
+ * on this page is invented.
+ *
+ * Bilingual: Hindi and English, switched by the control in the masthead and
+ * remembered per browser. Every user-facing string lives in COPY below — none
+ * are built inline — so a third language is a new key, not a code change.
  */
 
-let chartInstance = null;
-let currentDeviceId = null;
-let pollTimer = null;
+const POLL_MS = 45000;
+const ACK_TTL_MS = 8 * 60 * 60 * 1000; // an acknowledgement is good for a shift
+const ACK_SRI_SLACK = 0.03;            // ...unless risk climbs past where it was
+const LANG_KEY = "smartshelf.lang";
+const DEFAULT_LANG = "hi";             // the shopkeeper's language leads
 
-// DOM Elements
-const deviceSelect = document.getElementById("device-select");
-const refreshBtn = document.getElementById("refresh-btn");
-const currentSriVal = document.getElementById("current-sri-value");
-const sriRiskBadge = document.getElementById("sri-risk-badge");
-const commodityVal = document.getElementById("commodity-value");
-const trendLabel = document.getElementById("trend-label");
-const trendRate = document.getElementById("trend-rate");
-const lastUpdatedTime = document.getElementById("last-updated-time");
-const insufficientBanner = document.getElementById("insufficient-data-banner");
-const fanLegend = document.getElementById("fan-threshold-legend");
-const alertLegend = document.getElementById("alert-threshold-legend");
+// Each commodity is drawn in the colour of the actual produce.
+const PRODUCE_COLOUR = {
+  tomato: "#C33B2B",
+  onion: "#8E4A63",
+  potato: "#A87A3C",
+  leafy_greens: "#4C7A2C",
+};
+const PRODUCE_FALLBACK = "#5A6B5F";
+
+/* ------------------------------------------------------------------ *
+ * every word on the page
+ * ------------------------------------------------------------------ */
+
+const COPY = {
+  en: {
+    other: "हिन्दी",                       // the switch names where it takes you
+    otherAria: "Switch to Hindi",
+    brand: "Smart Shelf",
+    shelfLabel: "Shelf",
+    chooseShelf: "Choose a shelf",
+
+    produce: { tomato: "Tomato", onion: "Onion", potato: "Potato", leafy_greens: "Leafy greens" },
+    who: (name, id) => name + " on " + id,
+    thisShelf: "This shelf",
+
+    bootWho: "Reading the shelf",
+    bootSay: "Just a moment.",
+
+    sayAct: "Sell or move these today.",
+    sayWatch: "Keep an eye on these.",
+    sayCalm: "These are keeping well.",
+    ackedAct: "You've moved these.",
+    ackedWatch: "You've seen this.",
+    ackAct: "I've moved them",
+    ackWatch: "I've seen this",
+
+    noCommodity: "No produce assigned to this shelf.",
+    noCommodityFix: "Assign a commodity to start tracking spoilage.",
+    noReadings: "No readings from this shelf yet.",
+    noReadingsFix: "Check that the sensor node is powered on and connected.",
+
+    riskNow: "Spoilage risk is high right now.",
+    riskEasing: "Risk is easing.",
+    nothingToDo: "Nothing to do today.",
+    steady: "Holding steady for now.",
+    learning: "Still learning this shelf. The trend needs a few more readings.",
+    riskIn: (d) => d.charAt(0).toUpperCase() + d.slice(1) + " before spoilage risk.",
+    duration: {
+      minutes: (n) => "about " + n + " minutes",
+      hour: "about an hour",
+      hours: (n) => "about " + n + " hours",
+      day: "more than a day",
+    },
+
+    fanSince: (t) => "The fan has been on since " + t + ".",
+    fanOn: "The fan is on.",
+    fanOff: "The fan is off.",
+    climate: (t, h) => "It's " + t + "° and " + h + "% humid.",
+
+    others: "Other shelves",
+    rowAct: "needs attention",
+    rowWatch: "worth a look",
+    rowCalm: "holding steady",
+    rowUnassigned: "nothing assigned",
+    rowNoReadings: "no readings yet",
+    rowUnreachable: "not reachable",
+
+    showReadings: "Show the readings",
+    nSri: "Spoilage index",
+    nTemp: "Temperature",
+    nHum: "Humidity",
+    nGas: "Gas reading",
+    nFanAt: "Fan turns on at",
+    nAlertAt: "Alert level",
+    nSlope: "Change per minute",
+    noteEstimate: "The dotted line extrapolates the recent trend. It is an estimate, not a promise.",
+    noteLearning: "The forecast line needs at least four spaced-out readings before it can be drawn.",
+    noteIdle: "Readings will appear here once the shelf reports in.",
+
+    chartMeasured: "Measured",
+    chartExpected: "Expected",
+    chartFanOn: "Fan turns on",
+    chartAlert: "Alert level",
+    axisHour: "h a",
+
+    updated: (t) => "Updated " + t + ", and every 45 seconds.",
+    lastTried: (t) => "Last tried " + t + ".",
+    unreachable: "Can't reach the shelf service.",
+    unreachableFix: "Check that the backend is running, then refresh this page.",
+    noShelves: "No shelves registered yet.",
+    noShelvesFix: "Register a shelf node to begin.",
+  },
+
+  hi: {
+    other: "English",
+    otherAria: "अंग्रेज़ी में बदलें",
+    brand: "स्मार्ट शेल्फ",
+    shelfLabel: "शेल्फ",
+    chooseShelf: "शेल्फ चुनें",
+
+    produce: {
+      tomato: "टमाटर",
+      onion: "प्याज़",
+      potato: "आलू",
+      leafy_greens: "हरी पत्तेदार सब्ज़ी",
+    },
+    who: (name, id) => id + " पर " + name,
+    thisShelf: "यह शेल्फ",
+
+    bootWho: "शेल्फ पढ़ी जा रही है",
+    bootSay: "एक पल।",
+
+    sayAct: "इन्हें आज ही बेच दें या हटा दें।",
+    sayWatch: "इन पर नज़र रखें।",
+    sayCalm: "ये ठीक हालत में हैं।",
+    ackedAct: "आपने इन्हें हटा दिया है।",
+    ackedWatch: "आपने इसे देख लिया है।",
+    ackAct: "मैंने हटा दिए",
+    ackWatch: "देख लिया",
+
+    noCommodity: "इस शेल्फ पर कोई सामान तय नहीं है।",
+    noCommodityFix: "खराबी पर नज़र रखने के लिए सामान चुनें।",
+    noReadings: "इस शेल्फ से अभी कोई रीडिंग नहीं आई।",
+    noReadingsFix: "देखें कि सेंसर चालू है और जुड़ा हुआ है।",
+
+    riskNow: "अभी खराब होने का ख़तरा ज़्यादा है।",
+    riskEasing: "ख़तरा कम हो रहा है।",
+    nothingToDo: "आज कुछ करने की ज़रूरत नहीं।",
+    steady: "फ़िलहाल हालत स्थिर है।",
+    learning: "अभी इस शेल्फ को समझा जा रहा है। रुझान के लिए कुछ और रीडिंग चाहिए।",
+    riskIn: (d) => "खराब होने के ख़तरे में " + d + " बाकी।",
+    duration: {
+      minutes: (n) => "करीब " + n + " मिनट",
+      hour: "करीब एक घंटा",
+      hours: (n) => "करीब " + n + " घंटे",
+      day: "एक दिन से ज़्यादा",
+    },
+
+    fanSince: (t) => "पंखा " + t + " से चल रहा है।",
+    fanOn: "पंखा चल रहा है।",
+    fanOff: "पंखा बंद है।",
+    climate: (t, h) => "तापमान " + t + "° और नमी " + h + "% है।",
+
+    others: "दूसरी शेल्फ",
+    rowAct: "ध्यान दें",
+    rowWatch: "देख लें",
+    rowCalm: "ठीक है",
+    rowUnassigned: "कुछ तय नहीं",
+    rowNoReadings: "कोई रीडिंग नहीं",
+    rowUnreachable: "संपर्क नहीं",
+
+    showReadings: "रीडिंग देखें",
+    nSri: "खराबी सूचकांक",
+    nTemp: "तापमान",
+    nHum: "नमी",
+    nGas: "गैस रीडिंग",
+    nFanAt: "पंखा चालू स्तर",
+    nAlertAt: "चेतावनी स्तर",
+    nSlope: "प्रति मिनट बदलाव",
+    noteEstimate: "बिंदुदार रेखा हाल के रुझान का अनुमान है। यह अंदाज़ा है, पक्का वादा नहीं।",
+    noteLearning: "अनुमान रेखा खींचने के लिए कम से कम चार अलग-अलग समय की रीडिंग चाहिए।",
+    noteIdle: "शेल्फ से जानकारी आते ही रीडिंग यहाँ दिखेंगी।",
+
+    chartMeasured: "मापा गया",
+    chartExpected: "अनुमान",
+    chartFanOn: "पंखा चालू",
+    chartAlert: "चेतावनी स्तर",
+    axisHour: "HH",                       // 24-hour on the axis reads cleanly in Hindi
+
+    updated: (t) => t + " पर अपडेट, और हर 45 सेकंड में।",
+    lastTried: (t) => "आख़िरी कोशिश " + t + "।",
+    unreachable: "शेल्फ सेवा से संपर्क नहीं हो पा रहा।",
+    unreachableFix: "देखें कि बैकएंड चल रहा है, फिर यह पेज रिफ़्रेश करें।",
+    noShelves: "अभी कोई शेल्फ दर्ज नहीं है।",
+    noShelvesFix: "शुरू करने के लिए एक शेल्फ दर्ज करें।",
+  },
+};
+
+const els = {
+  brand: document.getElementById("brand"),
+  langToggle: document.getElementById("lang-toggle"),
+  shelfLabel: document.getElementById("shelf-label"),
+  picker: document.getElementById("shelf-picker"),
+  crate: document.getElementById("crate"),
+  who: document.getElementById("crate-who"),
+  say: document.getElementById("crate-say"),
+  when: document.getElementById("crate-when"),
+  facts: document.getElementById("crate-facts"),
+  ack: document.getElementById("ack"),
+  others: document.getElementById("others"),
+  othersTitle: document.querySelector(".others__title"),
+  rows: document.getElementById("rows"),
+  evidence: document.getElementById("evidence"),
+  evidenceSummary: document.querySelector(".evidence__summary"),
+  numbers: document.getElementById("numbers"),
+  note: document.getElementById("evidence-note"),
+  footTime: document.getElementById("foot-time"),
+};
+
+let shelves = [];
+let currentDeviceId = null;
+let chart = null;
+let lang = DEFAULT_LANG;
+
+const t = () => COPY[lang];
+
+/* ------------------------------------------------------------------ *
+ * small helpers
+ * ------------------------------------------------------------------ */
+
+async function getJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(url + " responded " + res.status);
+  return res.json();
+}
+
+function produceName(type) {
+  if (!type) return "";
+  return t().produce[type] || type.replace(/_/g, " ");
+}
+
+function produceColour(type) {
+  return PRODUCE_COLOUR[type] || PRODUCE_FALLBACK;
+}
 
 /**
- * Initialize Chart.js configuration.
+ * Shop hours. English reads 8:04 am; Hindi names the part of the day, which is
+ * how the time is actually said — पूर्वाह्न is correct but nobody speaks it.
  */
-function initChart() {
+function clockTime(date) {
+  if (lang === "en") {
+    return date.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+  }
+  const h = date.getHours();
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  let part;
+  if (h >= 4 && h < 12) part = "सुबह";
+  else if (h >= 12 && h < 16) part = "दोपहर";
+  else if (h >= 16 && h < 19) part = "शाम";
+  else part = "रात";
+  return part + " " + h12 + ":" + mm;
+}
+
+/** Plain-language duration. Deliberately vague — the trend is an estimate. */
+function humanDuration(minutes) {
+  const d = t().duration;
+  if (minutes < 45) return d.minutes(Math.max(5, Math.round(minutes / 5) * 5));
+  if (minutes < 90) return d.hour;
+  if (minutes < 20 * 60) return d.hours(Math.round(minutes / 60));
+  return d.day;
+}
+
+/* ------------------------------------------------------------------ *
+ * reading the shelf
+ * ------------------------------------------------------------------ */
+
+/**
+ * How long the fan has been running, by walking back through history while
+ * fan_commanded stays true. Returns the Date it came on, or null if it's off.
+ */
+function fanOnSince(historyNewestFirst) {
+  if (!historyNewestFirst.length || !historyNewestFirst[0].fan_commanded) return null;
+  let since = historyNewestFirst[0].device_timestamp;
+  for (const r of historyNewestFirst) {
+    if (!r.fan_commanded) break;
+    since = r.device_timestamp;
+  }
+  return new Date(since);
+}
+
+/** Minutes until SRI is forecast to cross the alert threshold, or null. */
+function minutesUntilRisk(sri, alertThreshold, slopePerMin) {
+  if (sri === null || slopePerMin === null || slopePerMin === undefined) return null;
+  if (slopePerMin <= 0.00001) return null;
+  if (sri >= alertThreshold) return 0;
+  return (alertThreshold - sri) / slopePerMin;
+}
+
+function readAck(deviceId) {
+  try {
+    return JSON.parse(localStorage.getItem("smartshelf.ack." + deviceId));
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeAck(deviceId, sri) {
+  try {
+    localStorage.setItem(
+      "smartshelf.ack." + deviceId,
+      JSON.stringify({ at: Date.now(), sri: sri })
+    );
+  } catch (err) {
+    /* private mode — the button simply won't stick */
+  }
+}
+
+/**
+ * Turn the algorithm's numbers into a state and the words for it.
+ * States: idle (nothing to say), calm, watch, act.
+ */
+function assess(status, forecast, history) {
+  const C = t();
+  const commodity = status && status.active_commodity;
+  const latest = status && status.latest_reading;
+
+  if (!commodity) {
+    return {
+      state: "idle", who: C.thisShelf, say: C.noCommodity,
+      when: C.noCommodityFix, facts: "", commodity: null,
+    };
+  }
+
+  const name = produceName(commodity);
+
+  if (!latest || latest.sri === null || latest.sri === undefined) {
+    return {
+      state: "idle", who: C.who(name, status.device_id), say: C.noReadings,
+      when: C.noReadingsFix, facts: "", commodity: commodity,
+    };
+  }
+
+  const sri = Number(latest.sri);
+  const fanOn = forecast && forecast.sri_fan_on !== null ? forecast.sri_fan_on : 0.6;
+  const alert = forecast && forecast.alert_threshold !== null ? forecast.alert_threshold : 0.7;
+  const slope = forecast ? forecast.trend_slope_per_min : null;
+  const learning = !forecast || forecast.insufficient_data;
+
+  const state = sri >= alert ? "act" : sri >= fanOn ? "watch" : "calm";
+
+  // --- the instruction ---------------------------------------------------
+  let say = state === "act" ? C.sayAct : state === "watch" ? C.sayWatch : C.sayCalm;
+
+  // --- the timing ---------------------------------------------------------
+  let when;
+  if (learning) {
+    when = C.learning;
+  } else if (state === "act") {
+    when = C.riskNow;
+  } else if (slope !== null && slope < -0.00001) {
+    when = C.riskEasing;
+  } else {
+    const mins = minutesUntilRisk(sri, alert, slope);
+    if (mins === null) when = state === "calm" ? C.nothingToDo : C.steady;
+    else when = C.riskIn(humanDuration(mins));
+  }
+
+  // --- the supporting facts, as sentences ---------------------------------
+  const since = fanOnSince(history);
+  const parts = [];
+  if (status.fan_command === "on") parts.push(since ? C.fanSince(clockTime(since)) : C.fanOn);
+  else parts.push(C.fanOff);
+  if (latest.temp_c !== undefined && latest.humidity_pct !== undefined) {
+    parts.push(C.climate(Number(latest.temp_c).toFixed(1), Math.round(latest.humidity_pct)));
+  }
+
+  // --- did they already deal with it? -------------------------------------
+  const ack = readAck(status.device_id);
+  const stillAcked = ack && Date.now() - ack.at < ACK_TTL_MS && sri <= ack.sri + ACK_SRI_SLACK;
+
+  // The button names the action it confirms, and the confirmation echoes it.
+  const ackLabel = state === "act" ? C.ackAct : C.ackWatch;
+  if (stillAcked && state !== "calm") {
+    say = state === "act" ? C.ackedAct : C.ackedWatch;
+  }
+
+  return {
+    state, who: C.who(name, status.device_id), say, when,
+    facts: parts.join(" "),
+    commodity, sri, fanOn, alert, slope, learning, latest,
+    ackLabel,
+    canAck: (state === "act" || state === "watch") && !stillAcked,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * rendering
+ * ------------------------------------------------------------------ */
+
+function renderCrate(view) {
+  els.crate.dataset.state = view.state;
+  els.crate.style.setProperty("--produce", produceColour(view.commodity));
+  els.who.textContent = view.who;
+  els.say.textContent = view.say;
+  els.when.textContent = view.when;
+  els.facts.textContent = view.facts;
+  els.ack.hidden = !view.canAck;
+  if (view.ackLabel) els.ack.textContent = view.ackLabel;
+}
+
+function renderOthers(others) {
+  const C = t();
+  els.rows.replaceChildren();
+  if (!others.length) {
+    els.others.hidden = true;
+    return;
+  }
+  els.others.hidden = false;
+
+  for (const o of others) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "row";
+    btn.dataset.state = o.state;
+    btn.style.setProperty("--produce", produceColour(o.commodity));
+
+    const who = document.createElement("span");
+    who.className = "row__who";
+    who.textContent = o.commodity ? produceName(o.commodity) : o.deviceId;
+
+    const how = document.createElement("span");
+    how.className = "row__how";
+    how.textContent = C[o.summaryKey];
+
+    btn.append(who, how);
+    btn.addEventListener("click", () => {
+      els.picker.value = o.deviceId;
+      currentDeviceId = o.deviceId;
+      refresh();
+    });
+
+    li.append(btn);
+    els.rows.append(li);
+  }
+}
+
+function renderNumbers(view) {
+  const C = t();
+  els.numbers.replaceChildren();
+  if (view.state === "idle") {
+    els.note.textContent = C.noteIdle;
+    return;
+  }
+
+  const rows = [
+    [C.nSri, view.sri.toFixed(3)],
+    [C.nTemp, Number(view.latest.temp_c).toFixed(1) + "°C"],
+    [C.nHum, Math.round(view.latest.humidity_pct) + "%"],
+    [C.nGas, Math.round(view.latest.gas_raw)],
+    [C.nFanAt, view.fanOn.toFixed(2)],
+    [C.nAlertAt, view.alert.toFixed(2)],
+  ];
+  if (!view.learning && view.slope !== null) {
+    rows.push([C.nSlope, (view.slope >= 0 ? "+" : "") + view.slope.toFixed(4)]);
+  }
+
+  for (const [label, value] of rows) {
+    const wrap = document.createElement("div");
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    wrap.append(dt, dd);
+    els.numbers.append(wrap);
+  }
+
+  els.note.textContent = view.learning ? C.noteLearning : C.noteEstimate;
+}
+
+function buildChart() {
   const ctx = document.getElementById("sri-chart").getContext("2d");
-  chartInstance = new Chart(ctx, {
+  chart = new Chart(ctx, {
     type: "line",
     data: {
       datasets: [
-        {
-          label: "Historical SRI",
-          data: [],
-          borderColor: "#38bdf8",
-          backgroundColor: "rgba(56, 189, 248, 0.08)",
-          fill: true,
-          tension: 0.15,
-          pointRadius: 2.5,
-          pointHoverRadius: 5,
-          borderWidth: 2,
-        },
-        {
-          label: "Forecast Predicted SRI",
-          data: [],
-          borderColor: "#fbbf24",
-          backgroundColor: "transparent",
-          borderDash: [6, 6],
-          fill: false,
-          tension: 0,
-          pointRadius: 3.5,
-          pointHoverRadius: 6,
-          pointBackgroundColor: "#fbbf24",
-          borderWidth: 2,
-        },
-        {
-          label: "Fan ON Threshold",
-          data: [],
-          borderColor: "rgba(192, 132, 252, 0.7)",
-          borderDash: [4, 4],
-          pointRadius: 0,
-          fill: false,
-          borderWidth: 1.5,
-        },
-        {
-          label: "Alert Threshold",
-          data: [],
-          borderColor: "rgba(248, 113, 113, 0.8)",
-          borderDash: [4, 4],
-          pointRadius: 0,
-          fill: false,
-          borderWidth: 1.5,
-        },
+        { data: [], borderColor: PRODUCE_FALLBACK, backgroundColor: "transparent",
+          borderWidth: 2.5, pointRadius: 0, tension: 0.25 },
+        { data: [], borderColor: PRODUCE_FALLBACK, backgroundColor: "transparent",
+          borderWidth: 2, borderDash: [3, 4], pointRadius: 0, tension: 0.25 },
+        { data: [], borderColor: "#8A6A10", borderWidth: 1, borderDash: [7, 5], pointRadius: 0 },
+        { data: [], borderColor: "#B9271A", borderWidth: 1, borderDash: [7, 5], pointRadius: 0 },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: {
-        mode: "index",
-        intersect: false,
-      },
-      plugins: {
-        legend: {
-          display: false, // Custom legend in HTML
-        },
-        tooltip: {
-          callbacks: {
-            label: function (context) {
-              const label = context.dataset.label || "";
-              const val = context.parsed.y;
-              return `${label}: ${val !== null ? val.toFixed(3) : "--"}`;
-            },
-          },
-        },
-      },
+      interaction: { mode: "nearest", intersect: false },
       scales: {
         x: {
           type: "time",
-          time: {
-            tooltipFormat: "PPpp",
-            displayFormats: {
-              minute: "HH:mm",
-              hour: "HH:mm",
-            },
-          },
-          grid: {
-            color: "rgba(51, 65, 85, 0.6)",
-          },
-          ticks: {
-            color: "#94a3b8",
-            maxRotation: 0,
-          },
+          time: { displayFormats: { hour: "h a", minute: "h:mm" } },
+          grid: { color: "#DFE7DC" },
+          ticks: { color: "#5A6B5F", font: { family: "Anek Latin", size: 12 }, maxRotation: 0 },
         },
         y: {
-          min: 0.0,
-          suggestedMax: 1.0,
-          grid: {
-            color: "rgba(51, 65, 85, 0.6)",
-          },
-          ticks: {
-            color: "#94a3b8",
-            callback: function (val) {
-              return val.toFixed(2);
-            },
-          },
-          title: {
-            display: true,
-            text: "Spoilage Risk Index (0.0 - 1.0)",
-            color: "#94a3b8",
-          },
+          min: 0, max: 1,
+          grid: { color: "#DFE7DC" },
+          ticks: { color: "#5A6B5F", font: { family: "Anek Latin", size: 12 }, stepSize: 0.25 },
         },
+      },
+      plugins: {
+        legend: { labels: { color: "#14251B", boxWidth: 14, boxHeight: 2,
+          font: { family: "Anek Latin", size: 12 } } },
+        tooltip: { backgroundColor: "#14251B",
+          titleFont: { family: "Anek Latin" }, bodyFont: { family: "Anek Latin" } },
       },
     },
   });
+  applyChartCopy();
 }
 
-/**
- * Fetch available devices and populate dropdown.
- */
-async function loadDevices() {
-  try {
-    const res = await fetch("/devices");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const devices = await res.json();
+function applyChartCopy() {
+  if (!chart) return;
+  const C = t();
+  const labels = [C.chartMeasured, C.chartExpected, C.chartFanOn, C.chartAlert];
+  chart.data.datasets.forEach((d, i) => { d.label = labels[i]; });
+  chart.options.scales.x.time.displayFormats.hour = C.axisHour;
+  const face = lang === "hi" ? "Anek Devanagari" : "Anek Latin";
+  chart.options.scales.x.ticks.font.family = face;
+  chart.options.scales.y.ticks.font.family = face;
+  chart.options.plugins.legend.labels.font.family = face;
+  chart.update();
+}
 
-    deviceSelect.innerHTML = "";
-    if (devices.length === 0) {
-      deviceSelect.innerHTML = '<option value="">No devices registered</option>';
-      return;
+function renderChart(view, history, forecast) {
+  if (!chart) return;
+  const colour = produceColour(view.commodity);
+
+  const measured = [...history]
+    .filter((r) => r.sri !== null && r.sri !== undefined)
+    .map((r) => ({ x: new Date(r.device_timestamp), y: Number(r.sri) }))
+    .sort((a, b) => a.x - b.x);
+
+  let expected = [];
+  if (forecast && forecast.forecast && forecast.forecast.length) {
+    expected = forecast.forecast.map((p) => ({
+      x: new Date(p.timestamp), y: Number(p.predicted_sri),
+    }));
+    // join the forecast to the last measured point so the line is continuous
+    if (measured.length) expected.unshift(measured[measured.length - 1]);
+  }
+
+  const from = measured.length ? measured[0].x : new Date(Date.now() - 6 * 3600e3);
+  const to = expected.length ? expected[expected.length - 1].x : new Date();
+
+  chart.data.datasets[0].borderColor = colour;
+  chart.data.datasets[0].data = measured;
+  chart.data.datasets[1].borderColor = colour;
+  chart.data.datasets[1].data = expected;
+  chart.data.datasets[2].data = [{ x: from, y: view.fanOn }, { x: to, y: view.fanOn }];
+  chart.data.datasets[3].data = [{ x: from, y: view.alert }, { x: to, y: view.alert }];
+  chart.update();
+}
+
+/** Never let a missing bit of chrome stop the shelf data from loading. */
+function setText(el, text) {
+  if (el) el.textContent = text;
+}
+
+/** Chrome that doesn't depend on a reading. */
+function renderChrome() {
+  const C = t();
+  document.documentElement.lang = lang;
+  document.title = C.brand;
+  setText(els.brand, C.brand);
+  setText(els.shelfLabel, C.shelfLabel);
+  setText(els.langToggle, C.other);
+  setText(els.othersTitle, C.others);
+  setText(els.evidenceSummary, C.showReadings);
+  if (els.picker) els.picker.setAttribute("aria-label", C.chooseShelf);
+  if (els.langToggle) els.langToggle.setAttribute("aria-label", C.otherAria);
+  applyChartCopy();
+}
+
+/* ------------------------------------------------------------------ *
+ * loading
+ * ------------------------------------------------------------------ */
+
+/** A one-line state for a shelf that isn't the one on screen. */
+async function summariseShelf(deviceId) {
+  try {
+    const status = await getJSON("/devices/" + deviceId + "/status");
+    const commodity = status.active_commodity;
+    const latest = status.latest_reading;
+
+    if (!commodity) return { deviceId, commodity: null, state: "idle", summaryKey: "rowUnassigned" };
+    if (!latest || latest.sri === null || latest.sri === undefined) {
+      return { deviceId, commodity, state: "idle", summaryKey: "rowNoReadings" };
     }
 
-    devices.forEach((d) => {
-      const opt = document.createElement("option");
-      opt.value = d.device_id;
-      opt.textContent = `${d.device_id} (${d.location || "Default Location"})`;
-      deviceSelect.appendChild(opt);
-    });
+    const forecast = await getJSON("/devices/" + deviceId + "/forecast?horizon_minutes=60&step_minutes=15");
+    const sri = Number(latest.sri);
+    const fanOn = forecast.sri_fan_on !== null ? forecast.sri_fan_on : 0.6;
+    const alert = forecast.alert_threshold !== null ? forecast.alert_threshold : 0.7;
 
-    currentDeviceId = devices[0].device_id;
-    deviceSelect.value = currentDeviceId;
-    await fetchDashboardData();
+    if (sri >= alert) return { deviceId, commodity, state: "act", summaryKey: "rowAct" };
+    if (sri >= fanOn) return { deviceId, commodity, state: "watch", summaryKey: "rowWatch" };
+    return { deviceId, commodity, state: "calm", summaryKey: "rowCalm" };
   } catch (err) {
-    console.error("Failed to load devices:", err);
-    deviceSelect.innerHTML = '<option value="">Error loading devices</option>';
+    return { deviceId, commodity: null, state: "idle", summaryKey: "rowUnreachable" };
   }
 }
 
-/**
- * Fetch historical readings and forecast data for current device.
- */
-async function fetchDashboardData() {
+async function refresh() {
   if (!currentDeviceId) return;
-
-  const now = new Date();
-  const sixHoursAgo = new Date(now.getTime() - 6 * 3600 * 1000).toISOString();
+  const C = t();
 
   try {
-    // 1. Fetch history from existing endpoint and forecast in parallel
-    const [historyRes, forecastRes] = await Promise.all([
-      fetch(`/devices/${currentDeviceId}/history?start_time=${encodeURIComponent(sixHoursAgo)}&limit=500`),
-      fetch(`/devices/${currentDeviceId}/forecast?horizon_minutes=60&step_minutes=5`),
+    const [status, forecast, history] = await Promise.all([
+      getJSON("/devices/" + currentDeviceId + "/status"),
+      getJSON("/devices/" + currentDeviceId + "/forecast?horizon_minutes=360&step_minutes=15"),
+      getJSON("/devices/" + currentDeviceId + "/history?limit=200"),
     ]);
 
-    const historyData = historyRes.ok ? await historyRes.json() : [];
-    const forecastData = forecastRes.ok ? await forecastRes.json() : null;
+    const view = assess(status, forecast, history);
+    renderCrate(view);
+    renderNumbers(view);
+    renderChart(view, history, forecast);
 
-    updateDashboardView(historyData, forecastData);
+    els.ack.onclick = () => {
+      writeAck(currentDeviceId, view.sri);
+      refresh();
+    };
+
+    const others = await Promise.all(
+      shelves.filter((s) => s.device_id !== currentDeviceId).map((s) => summariseShelf(s.device_id))
+    );
+    renderOthers(others);
+
+    els.footTime.textContent = C.updated(clockTime(new Date()));
   } catch (err) {
-    console.error("Error fetching dashboard telemetry:", err);
+    els.crate.dataset.state = "idle";
+    els.say.textContent = C.unreachable;
+    els.when.textContent = C.unreachableFix;
+    els.facts.textContent = "";
+    els.ack.hidden = true;
+    els.footTime.textContent = C.lastTried(clockTime(new Date()));
   }
 }
 
-/**
- * Update UI cards and Chart.js datasets in place.
- */
-function updateDashboardView(historyReadings, forecast) {
-  // Sort historical readings chronologically (API returns descending)
-  const sortedHistory = [...historyReadings].sort(
-    (a, b) => new Date(a.device_timestamp) - new Date(b.device_timestamp)
-  );
+async function loadShelves() {
+  const C = t();
+  try {
+    shelves = await getJSON("/devices");
+  } catch (err) {
+    shelves = [];
+  }
 
-  const historyPoints = sortedHistory
-    .filter((r) => r.sri !== null && r.sri !== undefined)
-    .map((r) => ({
-      x: new Date(r.device_timestamp),
-      y: Number(r.sri),
-    }));
+  els.picker.replaceChildren();
+  for (const s of shelves) {
+    const opt = document.createElement("option");
+    opt.value = s.device_id;
+    opt.textContent = s.device_id;
+    els.picker.append(opt);
+  }
 
-  let forecastPoints = [];
-  const sriFanOn = (forecast && forecast.sri_fan_on) || 0.60;
-  const alertThresh = (forecast && forecast.alert_threshold) || 0.70;
-
-  // Status card: Commodity
-  if (forecast && forecast.commodity) {
-    commodityVal.textContent = forecast.commodity.replace("_", " ").toUpperCase();
+  if (shelves.length) {
+    currentDeviceId = shelves[0].device_id;
+    els.picker.value = currentDeviceId;
+    refresh();
   } else {
-    commodityVal.textContent = "Unassigned";
-  }
-
-  // Status card: Current SRI
-  let currentSri = null;
-  if (forecast && forecast.current_sri !== null && forecast.current_sri !== undefined) {
-    currentSri = forecast.current_sri;
-  } else if (historyPoints.length > 0) {
-    currentSri = historyPoints[historyPoints.length - 1].y;
-  }
-
-  if (currentSri !== null) {
-    currentSriVal.textContent = Number(currentSri).toFixed(3);
-    if (currentSri >= alertThresh) {
-      sriRiskBadge.textContent = "HIGH RISK";
-      sriRiskBadge.className = "badge badge-danger";
-    } else if (currentSri >= sriFanOn) {
-      sriRiskBadge.textContent = "FAN ACTIVE";
-      sriRiskBadge.className = "badge badge-caution";
-    } else {
-      sriRiskBadge.textContent = "NORMAL";
-      sriRiskBadge.className = "badge badge-normal";
-    }
-  } else {
-    currentSriVal.textContent = "--";
-    sriRiskBadge.textContent = "NO DATA";
-    sriRiskBadge.className = "badge badge-neutral";
-  }
-
-  // Status card: Trend
-  if (!forecast || forecast.insufficient_data) {
-    trendLabel.textContent = "Gathering data...";
-    trendLabel.className = "badge badge-neutral";
-    trendRate.textContent = "";
-    insufficientBanner.style.display = "flex";
-  } else {
-    insufficientBanner.style.display = "none";
-    const slope = forecast.trend_slope_per_min;
-    if (slope > 0.001) {
-      trendLabel.textContent = "Rising ↑";
-      trendLabel.className = "badge badge-danger";
-      trendRate.textContent = `(+${slope.toFixed(4)}/min)`;
-    } else if (slope < -0.001) {
-      trendLabel.textContent = "Falling ↓";
-      trendLabel.className = "badge badge-normal";
-      trendRate.textContent = `(${slope.toFixed(4)}/min)`;
-    } else {
-      trendLabel.textContent = "Stable →";
-      trendLabel.className = "badge badge-neutral";
-      trendRate.textContent = `(${slope >= 0 ? "+" : ""}${slope.toFixed(4)}/min)`;
-    }
-
-    // Build forecast series
-    if (forecast.forecast && forecast.forecast.length > 0) {
-      forecastPoints = forecast.forecast.map((pt) => ({
-        x: new Date(pt.timestamp),
-        y: Number(pt.predicted_sri),
-      }));
-    }
-  }
-
-  // Last Updated
-  lastUpdatedTime.textContent = new Date().toLocaleTimeString();
-
-  // Threshold Guide Lines across visible time window
-  let minTime = new Date(Date.now() - 6 * 3600 * 1000);
-  let maxTime = new Date(Date.now() + 60 * 60 * 1000);
-
-  if (historyPoints.length > 0) {
-    minTime = historyPoints[0].x;
-  }
-  if (forecastPoints.length > 0) {
-    maxTime = forecastPoints[forecastPoints.length - 1].x;
-  }
-
-  const fanGuidePoints = [
-    { x: minTime, y: sriFanOn },
-    { x: maxTime, y: sriFanOn },
-  ];
-  const alertGuidePoints = [
-    { x: minTime, y: alertThresh },
-    { x: maxTime, y: alertThresh },
-  ];
-
-  fanLegend.textContent = `Fan ON Threshold (${sriFanOn.toFixed(2)})`;
-  alertLegend.textContent = `Alert Threshold (${alertThresh.toFixed(2)})`;
-
-  // Update Chart.js datasets in place
-  if (chartInstance) {
-    chartInstance.data.datasets[0].data = historyPoints;
-    chartInstance.data.datasets[1].data = forecastPoints;
-    chartInstance.data.datasets[2].data = fanGuidePoints;
-    chartInstance.data.datasets[3].data = alertGuidePoints;
-    chartInstance.update();
+    els.crate.dataset.state = "idle";
+    els.who.textContent = C.thisShelf;
+    els.say.textContent = C.noShelves;
+    els.when.textContent = C.noShelvesFix;
   }
 }
 
-// Event Listeners
-deviceSelect.addEventListener("change", (e) => {
+function setLang(next) {
+  lang = COPY[next] ? next : DEFAULT_LANG;
+  try {
+    localStorage.setItem(LANG_KEY, lang);
+  } catch (err) {
+    /* private mode — the choice just won't persist */
+  }
+  renderChrome();
+  refresh();
+}
+
+els.picker.addEventListener("change", (e) => {
   currentDeviceId = e.target.value;
-  fetchDashboardData();
+  refresh();
 });
 
-refreshBtn.addEventListener("click", () => {
-  fetchDashboardData();
+els.langToggle.addEventListener("click", () => setLang(lang === "hi" ? "en" : "hi"));
+
+// The canvas sits inside a closed <details>, so it has no size until the
+// shopkeeper opens it. Re-measure on the way open or the plot draws blank.
+els.evidence.addEventListener("toggle", (e) => {
+  if (e.target.open && chart) chart.resize();
 });
 
-// Setup 45s Polling
-function startPolling() {
-  pollTimer = setInterval(fetchDashboardData, 45000);
-}
-
-// Init on DOM load
 window.addEventListener("DOMContentLoaded", () => {
-  initChart();
-  loadDevices();
-  startPolling();
+  let saved = null;
+  try {
+    saved = localStorage.getItem(LANG_KEY);
+  } catch (err) {
+    /* fall through to the default */
+  }
+  lang = COPY[saved] ? saved : DEFAULT_LANG;
+
+  setText(els.who, t().bootWho);
+  setText(els.say, t().bootSay);
+
+  buildChart();
+  renderChrome();
+  loadShelves();
+  setInterval(refresh, POLL_MS);
 });

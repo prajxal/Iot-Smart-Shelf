@@ -1,324 +1,406 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Shelf — Spoilage Risk & Forecast Dashboard</title>
-  <!-- Chart.js and date adapter from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-  <style>
-    :root {
-      --bg-primary: #0f172a;
-      --bg-card: #1e293b;
-      --bg-card-hover: #334155;
-      --border-color: #334155;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --accent-blue: #38bdf8;
-      --accent-green: #34d399;
-      --accent-amber: #fbbf24;
-      --accent-red: #f87171;
-      --accent-purple: #c084fc;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Smart Shelf</title>
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anek+Devanagari:wdth,wght@75..125,100..800&family=Anek+Latin:wdth,wght@75..125,100..800&display=swap" rel="stylesheet">
 
-    body {
-      background-color: var(--bg-primary);
-      color: var(--text-main);
-      min-height: 100vh;
-      padding: 24px;
-    }
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
+<style>
+:root {
+  --wall:      #E9EFE6;
+  --paper:     #FCFDFB;
+  --ink:       #14251B;
+  --ink-soft:  #5A6B5F;
+  --hairline:  #CFD9CB;
 
-    header {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 24px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--border-color);
-      gap: 16px;
-    }
+  --turmeric:  #F2E3BC;
+  --turmeric-ink: #4A3908;
+  --chilli:    #B9271A;
 
-    .header-title h1 {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--text-main);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+  --produce:   var(--ink);
 
-    .header-title p {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
+  --step: 1.25rem;
+  --font: "Anek Latin", "Anek Devanagari", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
 
-    .controls {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+*, *::before, *::after { box-sizing: border-box; }
 
-    select, button {
-      background-color: var(--bg-card);
-      color: var(--text-main);
-      border: 1px solid var(--border-color);
-      padding: 8px 14px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      outline: none;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
+html { -webkit-text-size-adjust: 100%; }
 
-    select:focus, button:focus {
-      border-color: var(--accent-blue);
-    }
+body {
+  margin: 0;
+  background: var(--wall);
+  color: var(--ink);
+  font-family: var(--font);
+  font-variation-settings: "wdth" 100, "wght" 400;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
 
-    button:hover {
-      background-color: var(--bg-card-hover);
-    }
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
 
-    .poll-badge {
-      font-size: 0.75rem;
-      padding: 4px 8px;
-      border-radius: 9999px;
-      background: rgba(56, 189, 248, 0.15);
-      color: var(--accent-blue);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+.shell {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: clamp(1rem, 4vw, 2rem) clamp(1rem, 4vw, 1.5rem) 3rem;
+}
 
-    .poll-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background-color: var(--accent-blue);
-      animation: pulse 2s infinite;
-    }
+/* ---------- masthead ---------- */
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.875rem;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: var(--step);
+}
 
-    /* Metric Cards Grid */
-    .status-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
-    }
+.masthead__name {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-variation-settings: "wdth" 88, "wght" 700;
+  letter-spacing: 0.005em;
+}
 
-    .card {
-      background-color: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+.masthead__controls {
+  display: flex;
+  align-items: baseline;
+  gap: 1.125rem;
+}
 
-    .card-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-    }
+.lang {
+  font-family: var(--font);
+  font-size: 0.875rem;
+  font-variation-settings: "wght" 600;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 0;
+  border-bottom: 1.5px solid transparent;
+  padding: 0.15rem 0.1rem;
+  cursor: pointer;
+}
 
-    .card-value {
-      font-size: 1.5rem;
-      font-weight: 700;
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-    }
+.lang:hover { color: var(--ink); border-bottom-color: var(--hairline); }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      font-size: 0.75rem;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 4px;
-    }
+.picker {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
 
-    .badge-normal { background: rgba(52, 211, 153, 0.15); color: var(--accent-green); }
-    .badge-caution { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); }
-    .badge-danger { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
-    .badge-neutral { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
-    .badge-commodity { background: rgba(192, 132, 252, 0.15); color: var(--accent-purple); }
+.picker__select {
+  font-family: var(--font);
+  font-size: 0.9375rem;
+  font-variation-settings: "wght" 600;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1.5px solid var(--ink);
+  padding: 0.15rem 0.1rem;
+  cursor: pointer;
+}
 
-    /* Notice Banner */
-    .banner {
-      background: rgba(251, 191, 36, 0.1);
-      border: 1px solid rgba(251, 191, 36, 0.3);
-      color: var(--accent-amber);
-      padding: 12px 16px;
-      border-radius: 6px;
-      margin-bottom: 20px;
-      font-size: 0.875rem;
-      display: none;
-      align-items: center;
-      gap: 8px;
-    }
+/* ---------- the crate: hero ---------- */
 
-    /* Chart Section */
-    .chart-container {
-      background-color: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 20px;
-      position: relative;
-      height: 480px;
-    }
+.crate {
+  position: relative;
+  background: var(--paper);
+  border-radius: 14px;
+  border-left: 7px solid var(--produce);
+  padding: 1.5rem 1.375rem 1.5rem 1.5rem;
+  transition: background-color 420ms ease, color 420ms ease;
+}
 
-    .chart-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
+.crate__who {
+  margin: 0 0 1.125rem;
+  font-size: 0.9375rem;
+  font-variation-settings: "wght" 600;
+  color: var(--ink-soft);
+}
 
-    .chart-title {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text-main);
-    }
+.crate__say {
+  margin: 0;
+  font-size: clamp(2rem, 7.2vw, 3.125rem);
+  font-variation-settings: "wdth" 84, "wght" 700;
+  line-height: 1.04;
+  letter-spacing: -0.021em;
+  text-wrap: balance;
+}
 
-    .chart-legend-custom {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-    }
+.crate__when {
+  margin: 1rem 0 0;
+  font-size: 1.1875rem;
+  font-variation-settings: "wght" 500;
+  line-height: 1.35;
+  max-width: 24ch;
+}
 
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+.crate__facts {
+  margin: 0.875rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+  max-width: 40ch;
+}
 
-    .legend-line {
-      width: 16px;
-      height: 3px;
-      border-radius: 2px;
-    }
+.crate__facts:empty { display: none; }
 
-    .legend-line-solid { background-color: var(--accent-blue); }
-    .legend-line-dashed {
-      background: repeating-linear-gradient(90deg, var(--accent-amber), var(--accent-amber) 4px, transparent 4px, transparent 8px);
-    }
-    .legend-line-fan { background-color: var(--accent-purple); }
-    .legend-line-alert { background-color: var(--accent-red); }
-  </style>
+/* state grounds — the whole card carries status */
+
+.crate[data-state="watch"] {
+  background: var(--turmeric);
+  color: var(--turmeric-ink);
+  box-shadow: 0 2px 14px rgba(120, 92, 10, 0.15);
+}
+.crate[data-state="watch"] .crate__who,
+.crate[data-state="watch"] .crate__facts { color: #6B5518; }
+
+.crate[data-state="act"] {
+  background: var(--chilli);
+  color: var(--paper);
+  border-left-color: rgba(252, 253, 251, 0.5);
+  box-shadow: 0 3px 20px rgba(185, 39, 26, 0.3);
+}
+.crate[data-state="act"] .crate__who,
+.crate[data-state="act"] .crate__facts { color: rgba(252, 253, 251, 0.92); }
+
+.crate[data-state="idle"] {
+  background: transparent;
+  border: 1px dashed var(--hairline);
+  border-left: 7px solid var(--hairline);
+}
+.crate[data-state="idle"] .crate__say {
+  font-variation-settings: "wdth" 90, "wght" 500;
+  font-size: clamp(1.375rem, 4.6vw, 1.75rem);
+  color: var(--ink-soft);
+}
+
+/* ---------- acknowledge ---------- */
+
+.ack {
+  margin-top: 1.375rem;
+  font-family: var(--font);
+  font-size: 1rem;
+  font-variation-settings: "wght" 600;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  padding: 0.625rem 1.125rem;
+  cursor: pointer;
+}
+
+.crate[data-state="act"] .ack {
+  color: var(--chilli);
+  background: var(--paper);
+  border-color: var(--paper);
+}
+
+.ack[hidden] { display: none; }
+
+/* ---------- other shelves: rows, not cards ---------- */
+
+.others { margin-top: 2rem; }
+.others[hidden] { display: none; }
+
+.others__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-variation-settings: "wght" 600;
+  color: var(--ink-soft);
+}
+
+.rows { margin: 0; padding: 0; list-style: none; }
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8125rem 0.25rem 0.8125rem 1rem;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  width: 100%;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.9rem;
+  bottom: 0.9rem;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--produce);
+}
+
+.row__who { font-variation-settings: "wght" 600; }
+
+.row__how {
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
+.row[data-state="act"] .row__how { color: var(--chilli); font-variation-settings: "wght" 600; }
+.row[data-state="watch"] .row__how { color: #8A6A10; font-variation-settings: "wght" 600; }
+
+/* ---------- evidence disclosure ---------- */
+
+.evidence {
+  margin-top: 2rem;
+  border-top: 1px solid var(--hairline);
+  padding-top: 0.875rem;
+}
+
+.evidence__summary {
+  font-size: 0.9375rem;
+  font-variation-settings: "wght" 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.evidence__summary::-webkit-details-marker { display: none; }
+
+.evidence__summary::after {
+  content: "";
+  width: 0.5rem; height: 0.5rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-2px, -2px);
+}
+
+.evidence[open] .evidence__summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.evidence__body { padding-top: 1.125rem; }
+
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.875rem 1.25rem;
+  margin: 0 0 1.375rem;
+}
+
+.numbers div { margin: 0; }
+
+.numbers dt {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.1rem;
+}
+
+.numbers dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-variation-settings: "wdth" 92, "wght" 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.plot { position: relative; height: 240px; }
+
+.evidence__note {
+  margin: 1rem 0 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  max-width: 52ch;
+}
+
+/* ---------- foot ---------- */
+
+.foot {
+  margin-top: 2rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+:root:lang(hi) body,
+body:lang(hi) { line-height: 1.62; }
+
+:lang(hi) .crate__say {
+  line-height: 1.26;
+  letter-spacing: 0;
+}
+
+:lang(hi) .crate__when { line-height: 1.5; }
+
+:lang(hi) .numbers dd { font-variation-settings: "wdth" 96, "wght" 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
+</style>
 </head>
+
 <body>
-  <div class="container">
-    <header>
-      <div class="header-title">
-        <h1>🌾 Smart Shelf Spoilage Dashboard</h1>
-        <p>Real-time Spoilage Risk Index (SRI) telemetry & predictive forecasting</p>
-      </div>
-      <div class="controls">
-        <label for="device-select" style="font-size: 0.875rem; color: var(--text-muted);">Device:</label>
-        <select id="device-select">
-          <option value="">Loading devices...</option>
-        </select>
-        <button id="refresh-btn" title="Refresh data now">↻ Refresh</button>
-        <div class="poll-badge">
-          <span class="poll-dot"></span>
-          <span>45s Polling</span>
-        </div>
-      </div>
-    </header>
+<div class="shell">
 
-    <!-- Notice banner for insufficient data -->
-    <div id="insufficient-data-banner" class="banner">
-      <span>ℹ️</span>
-      <span id="banner-text">Gathering data... Insufficient readings to compute 4-bucket moving average trend. Forecast will appear once 4 distinct points are recorded.</span>
+  <header class="masthead">
+    <h1 class="masthead__name" id="brand">Smart Shelf</h1>
+    <div class="masthead__controls">
+      <button class="lang" id="lang-toggle" type="button">English</button>
+      <label class="picker">
+        <span id="shelf-label">शेल्फ</span>
+        <select class="picker__select" id="shelf-picker"></select>
+      </label>
     </div>
+  </header>
 
-    <!-- Status Cards -->
-    <div class="status-grid">
-      <div class="card">
-        <span class="card-label">Current SRI</span>
-        <div class="card-value">
-          <span id="current-sri-value">--</span>
-          <span id="sri-risk-badge" class="badge badge-neutral">--</span>
-        </div>
+  <main>
+    <section class="crate" id="crate" data-state="idle" aria-live="polite">
+      <p class="crate__who" id="crate-who">Reading the shelf</p>
+      <h2 class="crate__say" id="crate-say">Just a moment.</h2>
+      <p class="crate__when" id="crate-when"></p>
+      <p class="crate__facts" id="crate-facts"></p>
+      <button class="ack" id="ack" type="button" hidden>I've moved them</button>
+    </section>
+
+    <section class="others" id="others" hidden>
+      <h2 class="others__title">Other shelves</h2>
+      <ul class="rows" id="rows"></ul>
+    </section>
+
+    <details class="evidence" id="evidence">
+      <summary class="evidence__summary">Show the readings</summary>
+      <div class="evidence__body">
+        <dl class="numbers" id="numbers"></dl>
+        <div class="plot"><canvas id="sri-chart"></canvas></div>
+        <p class="evidence__note" id="evidence-note"></p>
       </div>
+    </details>
+  </main>
 
-      <div class="card">
-        <span class="card-label">Active Commodity</span>
-        <div class="card-value">
-          <span id="commodity-value">--</span>
-          <span id="commodity-badge" class="badge badge-commodity">AH-66</span>
-        </div>
-      </div>
+  <footer class="foot"><span id="foot-time"></span></footer>
 
-      <div class="card">
-        <span class="card-label">Spoilage Trend</span>
-        <div class="card-value">
-          <span id="trend-label">--</span>
-          <span id="trend-rate" style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);"></span>
-        </div>
-      </div>
+</div>
 
-      <div class="card">
-        <span class="card-label">Last Updated</span>
-        <div class="card-value" style="font-size: 1rem;">
-          <span id="last-updated-time">--</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Main Chart -->
-    <div class="chart-container">
-      <div class="chart-header">
-        <div class="chart-title">Spoilage Risk Index (Past 6 Hours + 60 Min Forecast)</div>
-        <div class="chart-legend-custom">
-          <div class="legend-item">
-            <div class="legend-line legend-line-solid"></div>
-            <span>Historical SRI</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-line legend-line-dashed"></div>
-            <span>Extrapolated Forecast</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-line legend-line-fan"></div>
-            <span id="fan-threshold-legend">Fan ON Threshold</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-line legend-line-alert"></div>
-            <span id="alert-threshold-legend">Alert Threshold</span>
-          </div>
-        </div>
-      </div>
-      <canvas id="sri-chart"></canvas>
-    </div>
-  </div>
-
-  <script src="/static/dashboard.js"></script>
+<script src="/static/dashboard.js"></script>
 </body>
 </html>
