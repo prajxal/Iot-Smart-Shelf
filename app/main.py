@@ -4,13 +4,16 @@ Initializes database connections, indexes, lifecycle events, and mounts API rout
 """
 
 import logging
+import math
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-from fastapi import FastAPI
+from typing import Any, AsyncGenerator
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from pathlib import Path
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
@@ -26,6 +29,29 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("smart_shelf.main")
+
+
+def _stringify_non_finite(value: Any) -> Any:
+    """Recursively replace NaN/Infinity floats with their string form.
+
+    Starlette's JSONResponse hardcodes allow_nan=False, so an error body that
+    echoes back a rejected NaN/Infinity input (as FastAPI's default validation
+    handler does) would otherwise crash instead of returning a 422.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _stringify_non_finite(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_stringify_non_finite(v) for v in value]
+    return value
+
+
+async def non_finite_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _stringify_non_finite(jsonable_encoder(exc.errors()))},
+    )
 
 
 @asynccontextmanager
@@ -53,6 +79,8 @@ def create_app() -> FastAPI:
         description=settings.api_description,
         lifespan=lifespan,
     )
+
+    app.add_exception_handler(RequestValidationError, non_finite_validation_handler)
 
     # CORS configuration for kirana dashboard or web clients
     app.add_middleware(

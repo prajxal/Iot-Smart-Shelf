@@ -17,9 +17,9 @@ class ReadingCreate(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp on device at the time of sampling",
     )
-    temp_c: float = Field(..., description="Ambient temperature reading in Celsius from DHT22")
-    humidity_pct: float = Field(..., description="Relative humidity reading in percent from DHT22")
-    gas_raw: float = Field(..., description="Raw analog/ADC reading from MQ-135 sensor")
+    temp_c: float = Field(..., allow_inf_nan=False, description="Ambient temperature reading in Celsius from DHT22")
+    humidity_pct: float = Field(..., allow_inf_nan=False, description="Relative humidity reading in percent from DHT22")
+    gas_raw: float = Field(..., allow_inf_nan=False, description="Raw analog/ADC reading from MQ-135 sensor")
     sensor_status: Optional[str] = Field(
         default="ok",
         description="Sensor health flag ('ok', 'dht22_error', 'mq135_error')",

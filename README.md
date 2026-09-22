@@ -152,3 +152,16 @@ The following parameters are engineering tuning weights and operational threshol
 2. **Gas Normalization Baseline & Span (`gas_signal_baseline`, `gas_signal_span`):** Normalizes $\frac{R_s}{R_o}$ relative to calibrated clean air baseline. *(# TODO(confirm): Finalize MQ-135 voltage span under kirana ambient conditions).*
 3. **Fan Hysteresis (`sri_fan_on=0.60`, `sri_fan_off=0.40`):** Prevents high-frequency relay bouncing.
 4. **Alert Thresholds (`alert_threshold=0.70`, `alert_resolve_threshold=0.40`):** Sets the trigger and resolution bounds for spoilage risk notifications.
+
+---
+
+## 8. Firmware Contract
+
+A generic reference sketch lives at [`firmware/smart_shelf/smart_shelf.ino`](firmware/smart_shelf/smart_shelf.ino).
+
+- **Endpoint:** `POST {BACKEND_BASE_URL}/devices/{device_id}/readings`, `Content-Type: application/json`.
+- **Body:** `{"device_seq": int, "temp_c": float, "humidity_pct": float, "gas_raw": float, "sensor_status": "ok"}`. `temp_c`/`humidity_pct`/`gas_raw` must be finite (no `NaN`/`Infinity`) or the backend returns `422`; if the DHT22 read fails, skip the send instead of transmitting it.
+- **`device_timestamp` is optional and should be omitted by firmware with no synced clock** (no RTC, no NTP) — the backend stamps it with server time when absent. If a device *does* buffer readings during a WiFi outage and replays them, it may send a genuine past `device_timestamp` for each buffered sample; the backend trusts any timestamp from 2024-01-01 onward that isn't more than 5 minutes ahead of server time, and only overrides implausible values (unset clocks, garbled clocks).
+- **`fan_command`** in the response is always exactly `"on"` or `"off"` — drive the relay directly from that string, never compute it on-device.
+- **Setup order before a device can POST readings:** register the device (`POST /devices`) → assign it a commodity (`PUT /devices/{device_id}/assignment`) → register a calibration baseline (`POST /devices/{device_id}/calibration`). Missing an assignment or profile is a `404`; missing calibration is a `400`.
+- **MQ-135 wiring:** use an ADC1 pin (GPIO32–39) — ADC2 pins are unusable once WiFi is active on the ESP32. Most breakout boards output 0–5V-ish and need a resistive divider to stay under the ESP32 ADC's ~3.3V max input, or reads will clip/saturate.

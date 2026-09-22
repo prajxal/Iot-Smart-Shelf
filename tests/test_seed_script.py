@@ -5,7 +5,6 @@ Validates PRD §0, §3.1, and §3.7:
 - Idempotency: re-running does not create duplicate versions
 """
 
-import json
 from pathlib import Path
 import pytest
 from scripts.seed_commodity_profiles import seed_commodity_profiles
@@ -15,8 +14,6 @@ from scripts.seed_commodity_profiles import seed_commodity_profiles
 async def test_seed_script_idempotency_and_fidelity(mock_db):
     """Test initial seed and verify idempotency on subsequent execution."""
     json_path = Path(__file__).resolve().parent.parent / "commodity-profiles.json"
-    with open(json_path, "r", encoding="utf-8") as f:
-        source_json = json.load(f)
 
     # First seed run on empty DB
     results_1 = await seed_commodity_profiles(json_path=json_path)
